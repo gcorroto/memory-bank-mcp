@@ -203,8 +203,9 @@ class TestClass:
 describe("Embedding Service", () => {
   // Skip if no API key
   const shouldSkip = !process.env.OPENAI_API_KEY;
+  const testFn = shouldSkip ? test.skip : test;
   
-  test.skip(shouldSkip ? "should generate embeddings (requires API key)" : undefined, async () => {
+  testFn("should generate embeddings (requires API key)", async () => {
     const service = new EmbeddingService(MOCK_API_KEY);
     
     const result = await service.generateEmbedding(
@@ -218,7 +219,7 @@ describe("Embedding Service", () => {
     expect(result.vector.length).toBe(1536); // text-embedding-3-small
   }, 30000);
   
-  test.skip(shouldSkip ? "should cache embeddings (requires API key)" : undefined, async () => {
+  testFn("should cache embeddings (requires API key)", async () => {
     const service = new EmbeddingService(MOCK_API_KEY, { enableCache: true });
     
     const content = "function test() { return true; }";
@@ -292,8 +293,9 @@ describe("Vector Store", () => {
 describe("Index Manager", () => {
   // Integration test that requires API key
   const shouldSkip = !process.env.OPENAI_API_KEY;
+  const testFn = shouldSkip ? test.skip : test;
   
-  test.skip(shouldSkip ? "should index test workspace (requires API key)" : undefined, async () => {
+  testFn("should index test workspace (requires API key)", async () => {
     const embeddingService = new EmbeddingService(MOCK_API_KEY);
     const vectorStore = new VectorStore(TEST_STORAGE);
     const indexManager = new IndexManager(embeddingService, vectorStore, TEST_STORAGE);
@@ -312,7 +314,7 @@ describe("Index Manager", () => {
     await vectorStore.close();
   }, 60000);
   
-  test.skip(shouldSkip ? "should search indexed code (requires API key)" : undefined, async () => {
+  testFn("should search indexed code (requires API key)", async () => {
     const embeddingService = new EmbeddingService(MOCK_API_KEY);
     const vectorStore = new VectorStore(TEST_STORAGE);
     const indexManager = new IndexManager(embeddingService, vectorStore, TEST_STORAGE);
@@ -341,8 +343,9 @@ describe("Index Manager", () => {
 
 describe("End-to-End Workflow", () => {
   const shouldSkip = !process.env.OPENAI_API_KEY;
+  const testFn = shouldSkip ? test.skip : test;
   
-  test.skip(shouldSkip ? "should complete full indexing and search workflow (requires API key)" : undefined, async () => {
+  testFn("should complete full indexing and search workflow (requires API key)", async () => {
     // 1. Setup
     const embeddingService = new EmbeddingService(MOCK_API_KEY);
     const vectorStore = new VectorStore(TEST_STORAGE);

@@ -5,11 +5,11 @@
 
 import * as fs from "fs";
 import { parse } from "@babel/parser";
-import traverseModule from "@babel/traverse";
+import traverseLib from "@babel/traverse";
 import * as crypto from "crypto";
 
-// Fix for @babel/traverse default export
-const traverse = traverseModule.default || traverseModule;
+// Handle traverse library export
+const traverse = typeof traverseLib === 'function' ? traverseLib : (traverseLib as any).default;
 
 export interface CodeChunk {
   id: string;              // Unique hash ID

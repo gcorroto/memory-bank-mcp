@@ -6,10 +6,10 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
-import ignoreModule from "ignore";
+import ignoreLib from "ignore";
 
-// Fix for ignore default export
-const ignore = ignoreModule.default || ignoreModule;
+// Handle ignore library export
+const ignore = typeof ignoreLib === 'function' ? ignoreLib : (ignoreLib as any).default;
 
 export interface FileMetadata {
   path: string;           // Relative path from workspace root
