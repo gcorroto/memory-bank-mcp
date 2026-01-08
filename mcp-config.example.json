@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "memory-bank": {
+      "command": "npx",
+      "args": ["@grec0/memory-bank-mcp@latest"],
+      "env": {
+        "OPENAI_API_KEY": "sk-your-api-key-here",
+        "MEMORYBANK_STORAGE_PATH": ".memorybank",
+        "MEMORYBANK_EMBEDDING_MODEL": "text-embedding-3-small",
+        "MEMORYBANK_EMBEDDING_DIMENSIONS": "1536",
+        "MEMORYBANK_CHUNK_SIZE": "1000",
+        "MEMORYBANK_CHUNK_OVERLAP": "200"
+      }
+    }
+  }
+} 

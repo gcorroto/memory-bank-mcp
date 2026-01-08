@@ -1,0 +1,76 @@
+# Memory Bank Ignore File
+# Similar to .gitignore, this file specifies patterns to exclude from indexing
+# Patterns are applied in addition to .gitignore rules
+
+# Dependencies
+node_modules/
+vendor/
+bower_components/
+
+# Build outputs
+dist/
+build/
+out/
+target/
+*.min.js
+*.bundle.js
+
+# Memory Bank storage itself
+.memorybank/
+
+# Large data files
+*.csv
+*.dat
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Binary and media files
+*.exe
+*.dll
+*.so
+*.dylib
+*.bin
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.ico
+*.mp3
+*.mp4
+*.avi
+*.mov
+*.zip
+*.tar
+*.gz
+*.rar
+
+# Documentation that doesn't need indexing
+CHANGELOG.md
+LICENSE
+*.lock
+
+# Test fixtures and mocks
+__snapshots__/
+fixtures/
+mocks/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
