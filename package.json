@@ -1,6 +1,6 @@
 {
   "name": "@grec0/memory-bank-mcp",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "MCP server for semantic code indexing with Memory Bank - AI-powered codebase understanding",
   "license": "MIT",
   "author": "@grec0",
@@ -29,9 +29,9 @@
     "version:minor": "npm version minor --no-git-tag-version",
     "version:major": "npm version major --no-git-tag-version",
     "prerelease": "npm run build && npm test",
-    "release:patch": "npm run version:patch && npm run prerelease && npm publish",
-    "release:minor": "npm run version:minor && npm run prerelease && npm publish",
-    "release:major": "npm run version:major && npm run prerelease && npm publish",
+    "release:patch": "npm run version:patch && npm run prerelease && npm publish --registry=https://registry.npmjs.org/",
+    "release:minor": "npm run version:minor && npm run prerelease && npm publish --registry=https://registry.npmjs.org/",
+    "release:major": "npm run version:major && npm run prerelease && npm publish --registry=https://registry.npmjs.org/",
     "postpublish": "git add package.json && git commit -m \"chore: bump version to v$(node -p \"require('./package.json').version\")\" && git push"
   },
   "dependencies": {
