@@ -391,11 +391,6 @@ memorybank_index_code({ forceReindex: true })
 4. Push al branch (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
-## 📖 Documentación Adicional
-
-- [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md): Guía completa para agentes de IA
-- [wiki/Developer-Guide.md](wiki/Developer-Guide.md): Guía para desarrolladores
-- [wiki/API-Reference.md](wiki/API-Reference.md): Referencia completa de API
 
 ## 🎓 Inspiración
 
