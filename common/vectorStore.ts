@@ -313,7 +313,8 @@ export class VectorStore {
     }
     
     try {
-      const allChunks = await (this.table as any).toArray();
+      // Use query().toArray() instead of direct toArray()
+      const allChunks = await this.table.query().toArray();
       
       const uniqueFiles = new Set<string>();
       const languageCounts: Record<string, number> = {};
@@ -386,7 +387,8 @@ export class VectorStore {
     }
     
     try {
-      const allChunks = await (this.table as any).toArray();
+      // Use query().toArray() instead of direct toArray()
+      const allChunks = await this.table.query().toArray();
       const fileHashes = new Map<string, string>();
       
       for (const chunk of allChunks) {
