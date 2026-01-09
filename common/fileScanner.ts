@@ -23,6 +23,7 @@ export interface FileMetadata {
 
 export interface ScanOptions {
   rootPath: string;       // Root directory to scan
+  projectRoot?: string;   // Optional project root for relative paths (defaults to rootPath)
   recursive?: boolean;    // Scan recursively (default: true)
   includeHidden?: boolean; // Include hidden files (default: false)
   maxFileSize?: number;   // Max file size in bytes (default: 10MB)
@@ -90,10 +91,10 @@ const BINARY_EXTENSIONS = new Set([
  */
 export function loadIgnorePatterns(rootPath: string): any {
   const ig = ignore();
-  
+
   // Always ignore .git directory and .memorybank storage
   ig.add([".git", ".memorybank", "node_modules", "dist", "build", "out"]);
-  
+
   // Load .gitignore if exists
   const gitignorePath = path.join(rootPath, ".gitignore");
   if (fs.existsSync(gitignorePath)) {
@@ -105,7 +106,7 @@ export function loadIgnorePatterns(rootPath: string): any {
       console.error(`Warning: Could not read .gitignore: ${error}`);
     }
   }
-  
+
   // Load .memoryignore if exists
   const memoryignorePath = path.join(rootPath, ".memoryignore");
   if (fs.existsSync(memoryignorePath)) {
@@ -117,15 +118,15 @@ export function loadIgnorePatterns(rootPath: string): any {
       console.error(`Warning: Could not read .memoryignore: ${error}`);
     }
   }
-  
+
   return ig;
 }
 
 /**
- * Calculates SHA-256 hash of file content
+ * Calculates SHA-256 hash of file content asynchronously
  */
-export function calculateFileHash(filePath: string): string {
-  const content = fs.readFileSync(filePath);
+export async function calculateFileHash(filePath: string): Promise<string> {
+  const content = await fs.promises.readFile(filePath);
   return crypto.createHash("sha256").update(content).digest("hex");
 }
 
@@ -152,82 +153,102 @@ export function isCodeFile(filePath: string): boolean {
   if (isBinaryFile(filePath)) {
     return false;
   }
-  
+
   const ext = path.extname(filePath).toLowerCase();
-  
+
   // Check if it's a known code file
   if (LANGUAGE_MAP[ext]) {
     return true;
   }
-  
+
   // Additional checks for files without extension or special cases
   const basename = path.basename(filePath);
   const codeFileNames = new Set([
     "Makefile", "Dockerfile", "Jenkinsfile", "Vagrantfile",
     "Rakefile", "Gemfile", "Podfile", "Fastfile",
   ]);
-  
+
   return codeFileNames.has(basename);
 }
 
 /**
- * Recursively scans directory for code files
+ * Recursively scans directory for code files asynchronously
  */
-function scanDirectoryRecursive(
+async function scanDirectoryRecursive(
   dirPath: string,
   rootPath: string,
   ig: any,
   options: Required<ScanOptions>,
-  results: FileMetadata[]
-): void {
+  results: FileMetadata[],
+  concurrencyLimit: number = 20
+): Promise<void> {
   let entries: fs.Dirent[];
-  
+
   try {
-    entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
   } catch (error) {
     console.error(`Warning: Could not read directory ${dirPath}: ${error}`);
     return;
   }
-  
+
+  // Process subdirectories sequentially to avoid recursion explosion
+  // but process files in current directory in parallel
+  const filesToProcess: fs.Dirent[] = [];
+
   for (const entry of entries) {
     const fullPath = path.join(dirPath, entry.name);
     const relativePath = path.relative(rootPath, fullPath);
-    
+
     // Skip hidden files if not included
     if (!options.includeHidden && entry.name.startsWith(".")) {
       continue;
     }
-    
+
     // Check ignore patterns (use forward slashes for cross-platform compatibility)
     const relativePathForward = relativePath.split(path.sep).join("/");
     if (ig.ignores(relativePathForward)) {
       continue;
     }
-    
+
     if (entry.isDirectory()) {
       if (options.recursive) {
-        scanDirectoryRecursive(fullPath, rootPath, ig, options, results);
+        await scanDirectoryRecursive(fullPath, rootPath, ig, options, results, concurrencyLimit);
       }
     } else if (entry.isFile()) {
+      filesToProcess.push(entry);
+    }
+  }
+
+  // Process files in batches
+  for (let i = 0; i < filesToProcess.length; i += concurrencyLimit) {
+    const batch = filesToProcess.slice(i, i + concurrencyLimit);
+    await Promise.all(batch.map(async (entry) => {
+      const fullPath = path.join(dirPath, entry.name);
+
+      // Calculate relative path from PROJECT root (not just scan root)
+      // And strictly normalize to forward slashes for consistency
+      const relativePathRaw = path.relative(options.projectRoot, fullPath);
+      const relativePath = relativePathRaw.split(path.sep).join("/");
+
       try {
         // Check if it's a code file
         if (!isCodeFile(fullPath)) {
-          continue;
+          return;
         }
-        
-        const stats = fs.statSync(fullPath);
-        
+
+        const stats = await fs.promises.stat(fullPath);
+
         // Check file size limit
         if (stats.size > options.maxFileSize) {
           console.error(`Skipping large file (${stats.size} bytes): ${relativePath}`);
-          continue;
+          return;
         }
-        
+
         // Calculate hash and collect metadata
-        const hash = calculateFileHash(fullPath);
+        const hash = await calculateFileHash(fullPath);
         const language = detectLanguage(fullPath);
         const extension = path.extname(fullPath);
-        
+
         results.push({
           path: relativePath,
           absolutePath: fullPath,
@@ -240,74 +261,78 @@ function scanDirectoryRecursive(
       } catch (error) {
         console.error(`Warning: Could not process file ${fullPath}: ${error}`);
       }
-    }
+    }));
   }
 }
 
 /**
- * Scans workspace for code files
+ * Scans workspace for code files asynchronously
  */
-export function scanFiles(options: ScanOptions): FileMetadata[] {
+export async function scanFiles(options: ScanOptions): Promise<FileMetadata[]> {
   const fullOptions: Required<ScanOptions> = {
     rootPath: options.rootPath,
+    projectRoot: options.projectRoot || options.rootPath,
     recursive: options.recursive !== undefined ? options.recursive : true,
     includeHidden: options.includeHidden !== undefined ? options.includeHidden : false,
     maxFileSize: options.maxFileSize || 10 * 1024 * 1024, // 10MB default
   };
-  
+
   // Validate root path
   if (!fs.existsSync(fullOptions.rootPath)) {
     throw new Error(`Root path does not exist: ${fullOptions.rootPath}`);
   }
-  
-  const stats = fs.statSync(fullOptions.rootPath);
+
+  const stats = await fs.promises.stat(fullOptions.rootPath);
   if (!stats.isDirectory()) {
     throw new Error(`Root path is not a directory: ${fullOptions.rootPath}`);
   }
-  
+
   console.error(`Scanning files in: ${fullOptions.rootPath}`);
-  
+
   // Load ignore patterns
   const ig = loadIgnorePatterns(fullOptions.rootPath);
-  
+
   // Scan files
   const results: FileMetadata[] = [];
-  scanDirectoryRecursive(
+  await scanDirectoryRecursive(
     fullOptions.rootPath,
     fullOptions.rootPath,
     ig,
     fullOptions,
     results
   );
-  
+
   console.error(`Found ${results.length} code files to index`);
-  
+
   return results;
 }
 
 /**
  * Scans a single file and returns its metadata
  */
-export function scanSingleFile(filePath: string, rootPath: string): FileMetadata | null {
+export async function scanSingleFile(filePath: string, rootPath: string, projectRoot?: string): Promise<FileMetadata | null> {
   try {
     if (!fs.existsSync(filePath)) {
       throw new Error(`File does not exist: ${filePath}`);
     }
-    
+
     const stats = fs.statSync(filePath);
     if (!stats.isFile()) {
       throw new Error(`Path is not a file: ${filePath}`);
     }
-    
+
     if (!isCodeFile(filePath)) {
       return null;
     }
-    
-    const hash = calculateFileHash(filePath);
+
+    const hash = await calculateFileHash(filePath);
     const language = detectLanguage(filePath);
     const extension = path.extname(filePath);
-    const relativePath = path.relative(rootPath, filePath);
-    
+
+    // Calculate relative path from PROJECT root
+    const relativePathRaw = path.relative(projectRoot || rootPath, filePath);
+    const relativePath = relativePathRaw.split(path.sep).join("/");
+
     return {
       path: relativePath,
       absolutePath: filePath,

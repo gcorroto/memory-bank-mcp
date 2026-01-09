@@ -30,6 +30,7 @@ export interface IndexStats {
 
 export interface IndexOptions {
   rootPath: string;
+  projectRoot?: string;
   forceReindex?: boolean;
   recursive?: boolean;
 }
@@ -42,7 +43,7 @@ export class IndexManager {
   private vectorStore: VectorStore;
   private metadataPath: string;
   private metadata: IndexMetadata;
-  
+
   constructor(
     embeddingService: EmbeddingService,
     vectorStore: VectorStore,
@@ -53,7 +54,7 @@ export class IndexManager {
     this.metadataPath = path.join(storagePath, "index-metadata.json");
     this.metadata = this.loadMetadata();
   }
-  
+
   /**
    * Loads index metadata from disk
    */
@@ -66,14 +67,14 @@ export class IndexManager {
     } catch (error) {
       console.error(`Warning: Could not load index metadata: ${error}`);
     }
-    
+
     return {
       version: "1.0",
       lastIndexed: 0,
       files: {},
     };
   }
-  
+
   /**
    * Saves index metadata to disk
    */
@@ -83,13 +84,13 @@ export class IndexManager {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      
+
       fs.writeFileSync(this.metadataPath, JSON.stringify(this.metadata, null, 2));
     } catch (error) {
       console.error(`Warning: Could not save index metadata: ${error}`);
     }
   }
-  
+
   /**
    * Checks if a file needs reindexing
    */
@@ -97,25 +98,26 @@ export class IndexManager {
     if (forceReindex) {
       return true;
     }
-    
+
     const fileInfo = this.metadata.files[file.path];
     if (!fileInfo) {
       return true; // New file
     }
-    
+
     if (fileInfo.hash !== file.hash) {
       return true; // File changed
     }
-    
+
     return false;
   }
-  
+
   /**
    * Indexes a single file
    */
   async indexFile(
     file: FileMetadata,
-    forceReindex: boolean = false
+    forceReindex: boolean = false,
+    saveMetadata: boolean = true
   ): Promise<{ chunksCreated: number; error?: string }> {
     try {
       // Check if file needs reindexing
@@ -123,16 +125,16 @@ export class IndexManager {
         console.error(`Skipping ${file.path} (no changes)`);
         return { chunksCreated: 0 };
       }
-      
+
       console.error(`Indexing: ${file.path}`);
-      
+
       // Read file content
       const content = fs.readFileSync(file.absolutePath, "utf-8");
-      
+
       // Get chunk size from environment or use defaults
       const maxChunkSize = parseInt(process.env.MEMORYBANK_CHUNK_SIZE || "1000");
       const chunkOverlap = parseInt(process.env.MEMORYBANK_CHUNK_OVERLAP || "200");
-      
+
       // Chunk the code
       const chunks = chunkCode({
         filePath: file.path,
@@ -141,26 +143,34 @@ export class IndexManager {
         maxChunkSize,
         chunkOverlap,
       });
-      
+
       if (chunks.length === 0) {
         console.error(`Warning: No chunks created for ${file.path}`);
         return { chunksCreated: 0 };
       }
-      
+
       console.error(`  Created ${chunks.length} chunks`);
-      
+
+      // Filter out invalid chunks (fail-safe)
+      const validChunks = chunks.filter(c => c.content && c.content.trim().length > 0 && c.content.trim() !== "}");
+
+      if (validChunks.length === 0) {
+        console.error(`Warning: No valid chunks after filtering for ${file.path}`);
+        return { chunksCreated: 0 };
+      }
+
       // Generate embeddings
-      const embeddingInputs = chunks.map((chunk) => ({
+      const embeddingInputs = validChunks.map((chunk) => ({
         id: chunk.id,
         content: chunk.content,
       }));
-      
+
       const embeddings = await this.embeddingService.generateBatchEmbeddings(
         embeddingInputs
       );
-      
+
       console.error(`  Generated ${embeddings.length} embeddings`);
-      
+
       // Prepare chunk records for storage
       const timestamp = Date.now();
       const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
@@ -171,21 +181,21 @@ export class IndexManager {
         startLine: chunk.startLine,
         endLine: chunk.endLine,
         chunkType: chunk.chunkType,
-        name: chunk.name,
+        name: chunk.name || "",
         language: chunk.language,
         fileHash: file.hash,
         timestamp,
         context: chunk.context,
       }));
-      
+
       // Delete old chunks for this file
       await this.vectorStore.deleteChunksByFile(file.path);
-      
+
       // Insert new chunks
       await this.vectorStore.insertChunks(chunkRecords);
-      
+
       console.error(`  Stored ${chunkRecords.length} chunks in vector store`);
-      
+
       // Update metadata
       this.metadata.files[file.path] = {
         hash: file.hash,
@@ -193,8 +203,11 @@ export class IndexManager {
         chunkCount: chunks.length,
       };
       this.metadata.lastIndexed = timestamp;
-      this.saveMetadata();
-      
+
+      if (saveMetadata) {
+        this.saveMetadata();
+      }
+
       return { chunksCreated: chunks.length };
     } catch (error) {
       const errorMsg = `Error indexing ${file.path}: ${error}`;
@@ -202,7 +215,7 @@ export class IndexManager {
       return { chunksCreated: 0, error: errorMsg };
     }
   }
-  
+
   /**
    * Indexes multiple files or a directory
    */
@@ -213,21 +226,22 @@ export class IndexManager {
     duration: number;
   }> {
     const startTime = Date.now();
-    
+
     console.error(`\n=== Starting indexing process ===`);
     console.error(`Root path: ${options.rootPath}`);
     console.error(`Force reindex: ${options.forceReindex || false}`);
-    
+
     // Initialize vector store
     await this.vectorStore.initialize();
-    
+
     // Scan files
     console.error(`\nScanning files...`);
-    const files = scanFiles({
+    const files = await scanFiles({
       rootPath: options.rootPath,
+      projectRoot: options.projectRoot,
       recursive: options.recursive !== undefined ? options.recursive : true,
     });
-    
+
     if (files.length === 0) {
       console.error("No files found to index");
       return {
@@ -237,14 +251,14 @@ export class IndexManager {
         duration: Date.now() - startTime,
       };
     }
-    
+
     // Filter files that need reindexing
     const filesToIndex = files.filter((file) =>
       this.needsReindexing(file, options.forceReindex || false)
     );
-    
+
     console.error(`\nFound ${files.length} files, ${filesToIndex.length} need indexing`);
-    
+
     if (filesToIndex.length === 0) {
       console.error("All files are up to date");
       return {
@@ -254,34 +268,55 @@ export class IndexManager {
         duration: Date.now() - startTime,
       };
     }
-    
-    // Index files
+
+    // Index files in batches
     const errors: string[] = [];
     let totalChunks = 0;
     let processedFiles = 0;
-    
-    for (let i = 0; i < filesToIndex.length; i++) {
-      const file = filesToIndex[i];
-      console.error(`\n[${i + 1}/${filesToIndex.length}] Processing ${file.path}`);
-      
-      const result = await this.indexFile(file, options.forceReindex || false);
-      
-      if (result.error) {
-        errors.push(result.error);
-      } else {
-        processedFiles++;
-        totalChunks += result.chunksCreated;
+    const batchSize = 5; // Concurrency limit
+
+    for (let i = 0; i < filesToIndex.length; i += batchSize) {
+      const batch = filesToIndex.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(filesToIndex.length / batchSize);
+
+      console.error(`\nProcessing batch ${batchNum}/${totalBatches} (${batch.length} files)`);
+
+      const batchPromises = batch.map(async (file, index) => {
+        console.error(`[${i + index + 1}/${filesToIndex.length}] Processing ${file.path}`);
+        return this.indexFile(file, options.forceReindex || false, false); // Don't save metadata per file
+      });
+
+      const results = await Promise.all(batchPromises);
+
+      // Process results
+      for (const result of results) {
+        if (result.error) {
+          errors.push(result.error);
+        } else {
+          processedFiles++;
+          totalChunks += result.chunksCreated;
+        }
+      }
+
+      // Save metadata and embedding cache after each batch
+      this.saveMetadata();
+      this.embeddingService.saveCache();
+
+      // Small delay between batches
+      if (i + batchSize < filesToIndex.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
-    
+
     const duration = Date.now() - startTime;
-    
+
     console.error(`\n=== Indexing complete ===`);
     console.error(`Files processed: ${processedFiles}`);
     console.error(`Chunks created: ${totalChunks}`);
     console.error(`Errors: ${errors.length}`);
     console.error(`Duration: ${(duration / 1000).toFixed(2)}s`);
-    
+
     return {
       filesProcessed: processedFiles,
       chunksCreated: totalChunks,
@@ -289,18 +324,19 @@ export class IndexManager {
       duration,
     };
   }
-  
+
   /**
    * Re-indexes a specific file by path
    */
   async reindexFile(
     filePath: string,
-    rootPath: string
+    rootPath: string,
+    projectRoot?: string
   ): Promise<{ success: boolean; chunksCreated: number; error?: string }> {
     try {
       // Scan the specific file
-      const file = scanSingleFile(filePath, rootPath);
-      
+      const file = await scanSingleFile(filePath, rootPath, projectRoot);
+
       if (!file) {
         return {
           success: false,
@@ -308,13 +344,13 @@ export class IndexManager {
           error: "File not found or not a code file",
         };
       }
-      
+
       // Initialize vector store
       await this.vectorStore.initialize();
-      
+
       // Index the file
       const result = await this.indexFile(file, true);
-      
+
       if (result.error) {
         return {
           success: false,
@@ -322,7 +358,7 @@ export class IndexManager {
           error: result.error,
         };
       }
-      
+
       return {
         success: true,
         chunksCreated: result.chunksCreated,
@@ -335,16 +371,16 @@ export class IndexManager {
       };
     }
   }
-  
+
   /**
    * Gets statistics about the index
    */
   async getStats(): Promise<IndexStats> {
     await this.vectorStore.initialize();
-    
+
     const vectorStats = await this.vectorStore.getStats();
     const fileHashes = await this.vectorStore.getFileHashes();
-    
+
     // Check for files that need reindexing
     const pendingFiles: string[] = [];
     for (const [filePath, storedHash] of fileHashes) {
@@ -353,7 +389,7 @@ export class IndexManager {
         pendingFiles.push(filePath);
       }
     }
-    
+
     return {
       totalFiles: vectorStats.fileCount,
       totalChunks: vectorStats.totalChunks,
@@ -362,7 +398,7 @@ export class IndexManager {
       pendingFiles: pendingFiles.length > 0 ? pendingFiles : undefined,
     };
   }
-  
+
   /**
    * Searches the index
    */
@@ -385,10 +421,10 @@ export class IndexManager {
     score: number;
   }>> {
     await this.vectorStore.initialize();
-    
+
     // Generate query embedding
     const queryVector = await this.embeddingService.generateQueryEmbedding(query);
-    
+
     // Search vector store
     const results = await this.vectorStore.search(queryVector, {
       topK: options.topK || 10,
@@ -396,7 +432,7 @@ export class IndexManager {
       filterByFile: options.filterByFile,
       filterByLanguage: options.filterByLanguage,
     });
-    
+
     // Format results
     return results.map((result) => ({
       filePath: result.chunk.filePath,
@@ -409,37 +445,37 @@ export class IndexManager {
       score: result.score,
     }));
   }
-  
+
   /**
    * Clears the entire index
    */
   async clearIndex(): Promise<void> {
     await this.vectorStore.initialize();
     await this.vectorStore.clear();
-    
+
     this.metadata = {
       version: "1.0",
       lastIndexed: 0,
       files: {},
     };
     this.saveMetadata();
-    
+
     // Clear embedding cache
     this.embeddingService.clearCache();
-    
+
     console.error("Index cleared");
   }
-  
+
   /**
    * Removes a file from the index
    */
   async removeFile(filePath: string): Promise<void> {
     await this.vectorStore.initialize();
     await this.vectorStore.deleteChunksByFile(filePath);
-    
+
     delete this.metadata.files[filePath];
     this.saveMetadata();
-    
+
     console.error(`Removed ${filePath} from index`);
   }
 }

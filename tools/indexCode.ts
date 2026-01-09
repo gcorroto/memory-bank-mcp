@@ -36,26 +36,27 @@ export async function indexCode(
         ? params.path
         : path.join(workspaceRoot, params.path)
       : workspaceRoot;
-    
+
     console.error(`\nIndexing code at: ${targetPath}`);
     console.error(`Workspace root: ${workspaceRoot}`);
     console.error(`Recursive: ${params.recursive !== false}`);
     console.error(`Force reindex: ${params.forceReindex || false}`);
-    
+
     // Run indexing
     const result = await indexManager.indexFiles({
       rootPath: targetPath,
+      projectRoot: workspaceRoot,
       recursive: params.recursive !== false,
       forceReindex: params.forceReindex || false,
     });
-    
+
     // Format result
     const message = result.filesProcessed > 0
       ? `Successfully indexed ${result.filesProcessed} file(s), created ${result.chunksCreated} chunk(s) in ${(result.duration / 1000).toFixed(2)}s`
       : result.errors.length > 0
-      ? `Indexing completed with errors`
-      : `No files needed indexing (all up to date)`;
-    
+        ? `Indexing completed with errors`
+        : `No files needed indexing (all up to date)`;
+
     return {
       success: result.errors.length === 0,
       filesProcessed: result.filesProcessed,
