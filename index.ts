@@ -219,19 +219,18 @@ server.tool(
 // Tool: Analyze Coverage
 server.tool(
   "memorybank_analyze_coverage",
-  "Analiza la cobertura de indexación del proyecto. Muestra qué carpetas/archivos están indexados, cuáles no, y cuáles tienen cambios pendientes. El projectId es OBLIGATORIO. NOTA: Puede tardar en workspaces grandes",
+  "Analiza la cobertura de indexación del proyecto. Muestra qué carpetas/archivos están indexados, cuáles no, y cuáles tienen cambios pendientes. OBLIGATORIO: projectId y path (ruta absoluta del workspace). NOTA: Puede tardar en workspaces grandes",
   {
     projectId: z
       .string()
       .describe("Identificador del proyecto a analizar (OBLIGATORIO)"),
     path: z
       .string()
-      .optional()
-      .describe("Ruta específica a analizar (por defecto: raíz del workspace)"),
+      .describe("Ruta absoluta del workspace a analizar (OBLIGATORIO). Ejemplo: 'C:/workspaces/mi-proyecto'"),
   },
   async (args) => {
     try {
-      const targetPath = args.path || workspaceRoot;
+      const targetPath = args.path;
       const result = await analyzeCoverage(indexManager, vectorStore, targetPath, args.projectId);
       
       return {
