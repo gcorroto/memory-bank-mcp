@@ -8,7 +8,7 @@ import { IndexManager } from "../common/indexManager.js";
 export interface SearchMemoryParams {
   query: string;              // Search query
   topK?: number;              // Number of results (default: 10)
-  minScore?: number;          // Minimum similarity score (default: 0.7)
+  minScore?: number;          // Minimum similarity score (default: 0.4)
   filterByFile?: string;      // Filter by file path pattern
   filterByLanguage?: string;  // Filter by language
 }
@@ -52,7 +52,7 @@ export async function searchMemory(
     
     console.error(`\nSearching Memory Bank for: "${params.query}"`);
     console.error(`Top K: ${params.topK || 10}`);
-    console.error(`Min score: ${params.minScore || 0.7}`);
+    console.error(`Min score: ${params.minScore || 0.4}`);
     
     if (params.filterByFile) {
       console.error(`Filter by file: ${params.filterByFile}`);
@@ -64,7 +64,7 @@ export async function searchMemory(
     // Search
     const results = await indexManager.search(params.query, {
       topK: params.topK || 10,
-      minScore: params.minScore !== undefined ? params.minScore : 0.7,
+      minScore: params.minScore !== undefined ? params.minScore : 0.4,
       filterByFile: params.filterByFile,
       filterByLanguage: params.filterByLanguage,
     });

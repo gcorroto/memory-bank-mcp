@@ -1,84 +1,22 @@
 /**
  * @fileoverview Intelligent code chunker for Memory Bank
  * Fragments code intelligently using AST parsing when possible
+ * Uses token counting to respect embedding model limits
  */
 
 import * as fs from "fs";
 import { parse } from "@babel/parser";
 import traverseLib from "@babel/traverse";
 import * as crypto from "crypto";
-import { getEncoding } from "js-tiktoken";
+import { encode } from "gpt-tokenizer";
 
 // Handle traverse library export
 const traverse = typeof traverseLib === 'function' ? traverseLib : (traverseLib as any).default;
 
-// Initialize tokenizer
-const enc = getEncoding("cl100k_base");
-
-/**
- * Enforces token limits on chunks, splitting them if necessary
- */
-function enforceTokenLimits(chunks: CodeChunk[], maxTokens: number = 8000): CodeChunk[] {
-  const result: CodeChunk[] = [];
-
-  for (const chunk of chunks) {
-    const tokens = enc.encode(chunk.content);
-    if (tokens.length <= maxTokens) {
-      result.push(chunk);
-    } else {
-      // Split into smaller chunks
-      const content = chunk.content;
-      const lines = content.split('\n');
-
-      let currentChunkLines: string[] = [];
-      let currentTokens = 0;
-      let startLine = chunk.startLine;
-      let partIndex = 1;
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const lineTokens = enc.encode(line + '\n').length;
-
-        if (currentTokens + lineTokens > maxTokens) {
-          // Push current chunk
-          if (currentChunkLines.length > 0) {
-            const subContent = currentChunkLines.join('\n');
-            result.push({
-              ...chunk,
-              id: `${chunk.id}-${partIndex}`,
-              content: subContent,
-              startLine: startLine,
-              endLine: startLine + currentChunkLines.length - 1,
-              name: chunk.name ? `${chunk.name} (Part ${partIndex})` : undefined
-            });
-            partIndex++;
-            startLine += currentChunkLines.length;
-            currentChunkLines = [];
-            currentTokens = 0;
-          }
-        }
-
-        currentChunkLines.push(line);
-        currentTokens += lineTokens;
-      }
-
-      // Remaining
-      if (currentChunkLines.length > 0) {
-        const subContent = currentChunkLines.join('\n');
-        result.push({
-          ...chunk,
-          id: `${chunk.id}-${partIndex}`,
-          content: subContent,
-          startLine: startLine,
-          endLine: chunk.endLine, // Best effort
-          name: chunk.name ? `${chunk.name} (Part ${partIndex})` : undefined
-        });
-      }
-    }
-  }
-
-  return result;
-}
+// Constants for embedding model limits
+// text-embedding-3-small has 8192 token limit, use 7500 for safety margin
+const MAX_TOKENS_PER_CHUNK = 7500;
+const DEFAULT_CHUNK_OVERLAP_TOKENS = 200;
 
 export interface CodeChunk {
   id: string;              // Unique hash ID
@@ -90,14 +28,30 @@ export interface CodeChunk {
   name?: string;           // Name of function/class if applicable
   language: string;        // Programming language
   context?: string;        // Additional context (imports, etc.)
+  tokenCount?: number;     // Token count for the chunk
 }
 
 export interface ChunkOptions {
   filePath: string;
   content: string;
   language: string;
-  maxChunkSize?: number;    // Default: 1000 characters
-  chunkOverlap?: number;    // Default: 200 characters
+  maxTokens?: number;           // Default: 7500 tokens
+  chunkOverlapTokens?: number;  // Default: 200 tokens
+  // Legacy options (for backwards compatibility)
+  maxChunkSize?: number;        // Deprecated, use maxTokens
+  chunkOverlap?: number;        // Deprecated, use chunkOverlapTokens
+}
+
+/**
+ * Counts tokens in a text using tiktoken-compatible tokenizer
+ */
+export function countTokens(text: string): number {
+  try {
+    return encode(text).length;
+  } catch {
+    // Fallback estimation: ~4 characters per token for code
+    return Math.ceil(text.length / 4);
+  }
 }
 
 /**
@@ -114,7 +68,7 @@ function generateChunkId(filePath: string, content: string, startLine: number): 
 function extractContext(content: string, language: string): string {
   const lines = content.split("\n");
   const contextLines: string[] = [];
-
+  
   if (language === "typescript" || language === "javascript") {
     // Extract imports and top-level comments
     for (const line of lines) {
@@ -150,8 +104,121 @@ function extractContext(content: string, language: string): string {
       }
     }
   }
-
+  
   return contextLines.join("\n");
+}
+
+/**
+ * Splits a chunk that exceeds the token limit into smaller chunks
+ */
+function splitLargeChunk(
+  chunk: CodeChunk,
+  maxTokens: number,
+  overlapTokens: number
+): CodeChunk[] {
+  const tokenCount = countTokens(chunk.content);
+  
+  // If under limit, return as-is
+  if (tokenCount <= maxTokens) {
+    return [{ ...chunk, tokenCount }];
+  }
+  
+  console.error(
+    `Splitting large chunk: ${chunk.filePath} (${chunk.name || 'unnamed'}) - ${tokenCount} tokens exceeds ${maxTokens} limit`
+  );
+  
+  const subChunks: CodeChunk[] = [];
+  const lines = chunk.content.split("\n");
+  
+  let currentLines: string[] = [];
+  let currentTokens = 0;
+  let subChunkStartLine = chunk.startLine;
+  let subChunkIndex = 0;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineTokens = countTokens(line + "\n");
+    
+    // If single line exceeds max, we have to include it anyway (extreme edge case)
+    if (lineTokens > maxTokens && currentLines.length === 0) {
+      currentLines.push(line);
+      currentTokens = lineTokens;
+    } else if (currentTokens + lineTokens > maxTokens && currentLines.length > 0) {
+      // Save current chunk
+      const content = currentLines.join("\n");
+      const actualTokens = countTokens(content);
+      
+      subChunks.push({
+        id: generateChunkId(chunk.filePath, content, subChunkStartLine),
+        filePath: chunk.filePath,
+        content,
+        startLine: subChunkStartLine,
+        endLine: chunk.startLine + i - 1,
+        chunkType: chunk.chunkType,
+        name: chunk.name ? `${chunk.name}_part${subChunkIndex + 1}` : undefined,
+        language: chunk.language,
+        context: chunk.context,
+        tokenCount: actualTokens,
+      });
+      
+      subChunkIndex++;
+      
+      // Calculate overlap - try to include enough lines to reach overlapTokens
+      let overlapLines: string[] = [];
+      let overlapTokenCount = 0;
+      for (let j = currentLines.length - 1; j >= 0 && overlapTokenCount < overlapTokens; j--) {
+        overlapLines.unshift(currentLines[j]);
+        overlapTokenCount += countTokens(currentLines[j] + "\n");
+      }
+      
+      currentLines = [...overlapLines, line];
+      currentTokens = overlapTokenCount + lineTokens;
+      subChunkStartLine = chunk.startLine + i - overlapLines.length;
+    } else {
+      currentLines.push(line);
+      currentTokens += lineTokens;
+    }
+  }
+  
+  // Save final sub-chunk
+  if (currentLines.length > 0) {
+    const content = currentLines.join("\n");
+    const actualTokens = countTokens(content);
+    
+    subChunks.push({
+      id: generateChunkId(chunk.filePath, content, subChunkStartLine),
+      filePath: chunk.filePath,
+      content,
+      startLine: subChunkStartLine,
+      endLine: chunk.endLine,
+      chunkType: chunk.chunkType,
+      name: chunk.name ? `${chunk.name}_part${subChunkIndex + 1}` : undefined,
+      language: chunk.language,
+      context: chunk.context,
+      tokenCount: actualTokens,
+    });
+  }
+  
+  console.error(`  Split into ${subChunks.length} sub-chunks`);
+  return subChunks;
+}
+
+/**
+ * Processes chunks to ensure none exceed the token limit
+ */
+function enforceTokenLimits(
+  chunks: CodeChunk[],
+  maxTokens: number,
+  overlapTokens: number
+): CodeChunk[] {
+  const result: CodeChunk[] = [];
+  
+  for (const chunk of chunks) {
+    const splitChunks = splitLargeChunk(chunk, maxTokens, overlapTokens);
+    result.push(...splitChunks);
+  }
+  
+  return result;
 }
 
 /**
@@ -160,7 +227,7 @@ function extractContext(content: string, language: string): string {
 function chunkTypeScriptJavaScript(options: Required<ChunkOptions>): CodeChunk[] {
   const chunks: CodeChunk[] = [];
   const context = extractContext(options.content, options.language);
-
+  
   try {
     // Parse with Babel
     const ast = parse(options.content, {
@@ -180,7 +247,7 @@ function chunkTypeScriptJavaScript(options: Required<ChunkOptions>): CodeChunk[]
         "objectRestSpread",
       ],
     });
-
+    
     // Traverse AST to find functions, classes, and methods
     traverse(ast, {
       FunctionDeclaration(path: any) {
@@ -189,7 +256,7 @@ function chunkTypeScriptJavaScript(options: Required<ChunkOptions>): CodeChunk[]
           const lines = options.content.split("\n");
           const chunkLines = lines.slice(node.loc.start.line - 1, node.loc.end.line);
           const content = chunkLines.join("\n");
-
+          
           chunks.push({
             id: generateChunkId(options.filePath, content, node.loc.start.line),
             filePath: options.filePath,
@@ -203,11 +270,11 @@ function chunkTypeScriptJavaScript(options: Required<ChunkOptions>): CodeChunk[]
           });
         }
       },
-
+      
       ArrowFunctionExpression(path: any) {
         const node = path.node;
         const parent = path.parent;
-
+        
         // Only capture named arrow functions (const foo = () => {})
         if (
           parent.type === "VariableDeclarator" &&
@@ -220,7 +287,7 @@ function chunkTypeScriptJavaScript(options: Required<ChunkOptions>): CodeChunk[]
           const endLine = node.loc.end.line;
           const chunkLines = lines.slice(startLine - 1, endLine);
           const content = chunkLines.join("\n");
-
+          
           chunks.push({
             id: generateChunkId(options.filePath, content, startLine),
             filePath: options.filePath,
@@ -234,14 +301,14 @@ function chunkTypeScriptJavaScript(options: Required<ChunkOptions>): CodeChunk[]
           });
         }
       },
-
+      
       ClassDeclaration(path: any) {
         const node = path.node;
         if (node.loc) {
           const lines = options.content.split("\n");
           const chunkLines = lines.slice(node.loc.start.line - 1, node.loc.end.line);
           const content = chunkLines.join("\n");
-
+          
           chunks.push({
             id: generateChunkId(options.filePath, content, node.loc.start.line),
             filePath: options.filePath,
@@ -255,14 +322,14 @@ function chunkTypeScriptJavaScript(options: Required<ChunkOptions>): CodeChunk[]
           });
         }
       },
-
+      
       ClassMethod(path: any) {
         const node = path.node;
         if (node.loc && node.key.type === "Identifier") {
           const lines = options.content.split("\n");
           const chunkLines = lines.slice(node.loc.start.line - 1, node.loc.end.line);
           const content = chunkLines.join("\n");
-
+          
           chunks.push({
             id: generateChunkId(options.filePath, content, node.loc.start.line),
             filePath: options.filePath,
@@ -277,9 +344,10 @@ function chunkTypeScriptJavaScript(options: Required<ChunkOptions>): CodeChunk[]
         }
       },
     });
-
-    // If no chunks were extracted or file is small, treat as single chunk
-    if (chunks.length === 0 || options.content.length <= options.maxChunkSize) {
+    
+    // If no chunks were extracted, treat as single chunk
+    if (chunks.length === 0) {
+      const tokenCount = countTokens(options.content);
       chunks.push({
         id: generateChunkId(options.filePath, options.content, 1),
         filePath: options.filePath,
@@ -289,16 +357,18 @@ function chunkTypeScriptJavaScript(options: Required<ChunkOptions>): CodeChunk[]
         chunkType: "file",
         language: options.language,
         context,
+        tokenCount,
       });
     }
-
+    
   } catch (error) {
     console.error(`AST parsing failed for ${options.filePath}, falling back to fixed chunking: ${error}`);
     // Fallback to fixed chunking if AST parsing fails
-    return chunkByFixedSize(options);
+    return chunkByTokens(options);
   }
-
-  return chunks;
+  
+  // Enforce token limits on all chunks
+  return enforceTokenLimits(chunks, options.maxTokens, options.chunkOverlapTokens);
 }
 
 /**
@@ -308,7 +378,7 @@ function chunkPython(options: Required<ChunkOptions>): CodeChunk[] {
   const chunks: CodeChunk[] = [];
   const lines = options.content.split("\n");
   const context = extractContext(options.content, options.language);
-
+  
   let currentChunk: string[] = [];
   let chunkStartLine = 1;
   let inFunction = false;
@@ -316,12 +386,12 @@ function chunkPython(options: Required<ChunkOptions>): CodeChunk[] {
   let functionName: string | undefined;
   let className: string | undefined;
   let baseIndent = 0;
-
+  
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
-    const indent = line.length - line.trimLeft().length;
-
+    const indent = line.length - line.trimStart().length;
+    
     // Detect function definition
     if (trimmed.startsWith("def ")) {
       // Save previous chunk if exists
@@ -339,17 +409,17 @@ function chunkPython(options: Required<ChunkOptions>): CodeChunk[] {
           context,
         });
       }
-
+      
       // Start new chunk
       currentChunk = [line];
       chunkStartLine = i + 1;
       inFunction = true;
       baseIndent = indent;
-
+      
       // Extract function name
       const match = trimmed.match(/def\s+(\w+)/);
       functionName = match ? match[1] : undefined;
-
+      
     } else if (trimmed.startsWith("class ")) {
       // Save previous chunk if exists
       if (currentChunk.length > 0) {
@@ -366,17 +436,17 @@ function chunkPython(options: Required<ChunkOptions>): CodeChunk[] {
           context,
         });
       }
-
+      
       // Start new chunk
       currentChunk = [line];
       chunkStartLine = i + 1;
       inClass = true;
       baseIndent = indent;
-
+      
       // Extract class name
       const match = trimmed.match(/class\s+(\w+)/);
       className = match ? match[1] : undefined;
-
+      
     } else if (inFunction || inClass) {
       // Check if we're still in the same block (based on indentation)
       if (trimmed && indent <= baseIndent && !trimmed.startsWith("#")) {
@@ -393,7 +463,7 @@ function chunkPython(options: Required<ChunkOptions>): CodeChunk[] {
           language: options.language,
           context,
         });
-
+        
         currentChunk = [line];
         chunkStartLine = i + 1;
         inFunction = false;
@@ -405,7 +475,7 @@ function chunkPython(options: Required<ChunkOptions>): CodeChunk[] {
       currentChunk.push(line);
     }
   }
-
+  
   // Save final chunk
   if (currentChunk.length > 0) {
     const content = currentChunk.join("\n");
@@ -421,7 +491,7 @@ function chunkPython(options: Required<ChunkOptions>): CodeChunk[] {
       context,
     });
   }
-
+  
   // If no chunks or very small file, return as single chunk
   if (chunks.length === 0) {
     chunks.push({
@@ -435,529 +505,66 @@ function chunkPython(options: Required<ChunkOptions>): CodeChunk[] {
       context,
     });
   }
-
-  return chunks;
+  
+  // Enforce token limits on all chunks
+  return enforceTokenLimits(chunks, options.maxTokens, options.chunkOverlapTokens);
 }
 
 /**
- * Chunks HTML/Vue/Svelte code by extracting script/style blocks
+ * Chunks code by token count with overlap (replacement for chunkByFixedSize)
  */
-function chunkHtml(options: Required<ChunkOptions>): CodeChunk[] {
-  const chunks: CodeChunk[] = [];
-  const content = options.content;
-  const context = extractContext(content, options.language);
-
-  // Helper to add chunks from other languages
-  const addSubChunks = (subContent: string, subLang: string, offsetLine: number) => {
-    // If language is not supported for semantic chunking, it will fall back to fixed size
-    // We need to adjust line numbers relative to the file
-    const subOptions = {
-      ...options,
-      content: subContent,
-      language: subLang,
-    };
-
-    // We use the main chunkCode router to handle the sub-content
-    // This allows reusing JS/TS/CSS logic
-    let subChunks: CodeChunk[] = [];
-    if (subLang === "typescript" || subLang === "javascript" || subLang === "ts" || subLang === "js") {
-      subChunks = chunkTypeScriptJavaScript(subOptions);
-    } else if (subLang === "css" || subLang === "scss" || subLang === "sass") {
-      subChunks = chunkCss(subOptions);
-    } else {
-      subChunks = chunkByFixedSize(subOptions);
-    }
-
-    subChunks.forEach(chunk => {
-      chunk.startLine += offsetLine;
-      chunk.endLine += offsetLine;
-      // Regenerate ID to ensure it includes the correct line numbers and file context
-      chunk.id = generateChunkId(options.filePath, chunk.content, chunk.startLine);
-      chunks.push(chunk);
-    });
-  };
-
-  // 1. Extract <script> blocks
-  const scriptRegex = /<script\s*(?:lang=["']([\w-]+)["'])?\s*(?:setup)?\s*>([\s\S]*?)<\/script>/gi;
-  let match;
-  while ((match = scriptRegex.exec(content)) !== null) {
-    const langIdx = match[1] || "javascript"; // Default to JS
-    const scriptContent = match[2];
-
-    // Normalize language
-    let subLang = langIdx.toLowerCase();
-    if (subLang === "ts") subLang = "typescript";
-    if (subLang === "js") subLang = "javascript";
-
-    // Calculate start line
-    const preMatch = content.substring(0, match.index);
-    const startLine = preMatch.split("\n").length - 1; // 0-indexed adjustment for calc
-
-    addSubChunks(scriptContent, subLang, startLine);
-  }
-
-  // 2. Extract <style> blocks
-  const styleRegex = /<style\s*(?:lang=["']([\w-]+)["'])?\s*(?:scoped)?\s*>([\s\S]*?)<\/style>/gi;
-  while ((match = styleRegex.exec(content)) !== null) {
-    const langIdx = match[1] || "css"; // Default to CSS
-    const styleContent = match[2];
-
-    // Normalize language
-    let subLang = langIdx.toLowerCase();
-
-    // Calculate start line
-    const preMatch = content.substring(0, match.index);
-    const startLine = preMatch.split("\n").length - 1;
-
-    addSubChunks(styleContent, subLang, startLine);
-  }
-
-  // 3. Process the template/HTML structure (rest of file or specific template block)
-  // For Vue, we might look for <template>, for pure HTML it's the whole file
-  // For simplicity, we'll try to find <template> first, if not, treat whole file (minus script/style) as HTML structure
-  // But removing script/style from content to chunk remainder is complex with line numbers.
-  // Instead, we will just chunk the whole file as "html" fixed chunks, 
-  // but we can be smarter: split by top-level tags if possible?
-  // Given complexity, falling back to fixed-size chunking for the *entire* file content 
-  // but labeled as "template" might be redundant with the script/style chunks.
-  // Better approach: Regex for <template> block in Vue/Svelte
-
-  const templateRegex = /<template>([\s\S]*?)<\/template>/i;
-  const templateMatch = templateRegex.exec(content);
-
-  if (templateMatch) {
-    const templateContent = templateMatch[1];
-    const preMatch = content.substring(0, templateMatch.index);
-    const startLine = preMatch.split("\n").length - 1;
-
-    // Chunk template as HTML (fixed size for now, strict AST for HTML is hard without lib)
-    addSubChunks(templateContent, "html", startLine);
-  } else if (options.language === "html") {
-    // For pure HTML files, just use fixed size chunking but exclude script/style if possible?
-    // Actually, letting it chunk the whole file by fixed size is a safe fallback for the "structure"
-    // The script/style chunks will strictly point to logic/styles.
-    // Overlapping coverage is acceptable.
-
-    // Let's rely on fixed partitioning for HTML content
-    const htmlChunks = chunkByFixedSize({
-      ...options,
-      language: "html"
-    });
-    // We only add these if we are sure we aren't duplicating too much logic?
-    // Actually duplication is fine, vector search handles it. 
-    // But better to separate concerns.
-
-    chunks.push(...htmlChunks);
-  }
-
-  return chunks;
-}
-
-/**
- * Chunks CSS/SCSS code by parsing rule blocks
- */
-function chunkCss(options: Required<ChunkOptions>): CodeChunk[] {
+function chunkByTokens(options: Required<ChunkOptions>): CodeChunk[] {
   const chunks: CodeChunk[] = [];
   const lines = options.content.split("\n");
   const context = extractContext(options.content, options.language);
-
-  let currentChunk: string[] = [];
-  let chunkStartLine = 1;
-  let braceDepth = 0;
-  let inComment = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    if (trimmed.startsWith("/*") && !inComment) inComment = true;
-    if (trimmed.endsWith("*/") && inComment) inComment = false;
-
-    // Count braces to detect block boundaries
-    // Simple heuristic, might fail on complex strings containing braces
-    const openBraces = (line.match(/\{/g) || []).length;
-    const closeBraces = (line.match(/\}/g) || []).length;
-
-    braceDepth += openBraces - closeBraces;
-
-    currentChunk.push(line);
-
-    // If we are at root level (depth 0) and have content, and just closed a block or ended a property
-    if (braceDepth === 0 && !inComment && currentChunk.length > 0) {
-      const chunkContent = currentChunk.join("\n").trim();
-
-      // Don't chunk empty lines
-      if (chunkContent.length > 0 && chunkContent !== "}") {
-        // Only finalize chunk if it looks like a complete rule or directive
-        // i.e. ends with } or ;
-        if (chunkContent.endsWith("}") || chunkContent.endsWith(";")) {
-          chunks.push({
-            id: generateChunkId(options.filePath, chunkContent, chunkStartLine),
-            filePath: options.filePath,
-            content: chunkContent,
-            startLine: chunkStartLine,
-            endLine: i + 1,
-            chunkType: "block", // CSS rule
-            language: options.language,
-            context,
-          });
-
-          currentChunk = [];
-          chunkStartLine = i + 2; // Next line
-        }
-      }
-    }
-
-    // Safety break for very large chunks
-    if (currentChunk.join("\n").length > (options.maxChunkSize * 2)) {
-      // Force split if rule is too massive
-      const chunkContent = currentChunk.join("\n");
-      // Validate content before pushing
-      if (chunkContent.trim().length > 0 && chunkContent.trim() !== "}") {
-        chunks.push({
-          id: generateChunkId(options.filePath, chunkContent, chunkStartLine),
-          filePath: options.filePath,
-          content: chunkContent,
-          startLine: chunkStartLine,
-          endLine: i + 1,
-          chunkType: "block",
-          language: options.language,
-          context,
-        });
-      }
-      currentChunk = [];
-      chunkStartLine = i + 2;
-      braceDepth = 0; // Reset to avoid getting stuck
-    }
-  }
-
-  // Remaining
-  // Remaining
-  if (currentChunk.length > 0) {
-    const chunkContent = currentChunk.join("\n");
-    // Validate content before pushing
-    if (chunkContent.trim().length > 0 && chunkContent.trim() !== "}") {
-      chunks.push({
-        id: generateChunkId(options.filePath, chunkContent, chunkStartLine),
-        filePath: options.filePath,
-        content: chunkContent,
-        startLine: chunkStartLine,
-        endLine: lines.length,
-        chunkType: "block",
-        language: options.language,
-        context,
-      });
-    }
-  }
-
-  return chunks;
-}
-
-/**
- * Chunks JSON files by parsing structure
- */
-function chunkJson(options: Required<ChunkOptions>): CodeChunk[] {
-  const chunks: CodeChunk[] = [];
-  // Context for JSON is usually not useful (just start of file)
-  const context = "";
-
-  try {
-    const json = JSON.parse(options.content);
-
-    if (Array.isArray(json)) {
-      // Chunk array items
-      json.forEach((item, index) => {
-        const itemStr = JSON.stringify(item, null, 2);
-        // We can't easily get exact lines from JSON.parse
-        // So we approximate or just treat as logical chunks without strict line mapping
-        // For semantic search, the content is what matters.
-        // Line numbers will be approximate (0-0 or 1-1) unless we re-search the string in content
-
-        // Let's try to locate the item in string roughly? expensive.
-        // We will just create chunks with content.
-        chunks.push({
-          id: generateChunkId(options.filePath, itemStr, index), // index as salt
-          filePath: options.filePath,
-          content: itemStr,
-          startLine: 1, // Unknown
-          endLine: 1, // Unknown
-          chunkType: "block",
-          name: `[${index}]`,
-          language: "json",
-          context,
-        });
-      });
-    } else if (typeof json === "object" && json !== null) {
-      // Chunk top-level keys
-      Object.keys(json).forEach((key) => {
-        const val = json[key];
-        const valStr = JSON.stringify(val, null, 2);
-        const chunkContent = `"${key}": ${valStr}`;
-
-        if (chunkContent.length > options.maxChunkSize) {
-          // If value is huge, maybe we should recurse or fixed-chunk it?
-          // For now, let's just push it.
-        }
-
-        chunks.push({
-          id: generateChunkId(options.filePath, chunkContent, 0),
-          filePath: options.filePath,
-          content: chunkContent,
-          startLine: 1,
-          endLine: 1,
-          chunkType: "block",
-          name: key,
-          language: "json",
-          context,
-        });
-      });
-    } else {
-      // Primitive, single chunk
-      chunks.push({
-        id: generateChunkId(options.filePath, options.content, 1),
-        filePath: options.filePath,
-        content: options.content,
-        startLine: 1,
-        endLine: options.content.split("\n").length,
-        chunkType: "file",
-        language: "json",
-      });
-    }
-  } catch (e) {
-    // Fallback to fixed size if invalid JSON
-    return chunkByFixedSize(options);
-  }
-
-  return chunks;
-}
-
-/**
- * Chunks Java code (Spring Boot support) using brace tracking and regex
- */
-function chunkJava(options: Required<ChunkOptions>): CodeChunk[] {
-  const chunks: CodeChunk[] = [];
-  const lines = options.content.split("\n");
-  const context = extractContext(options.content, options.language);
-
-  let currentChunk: string[] = [];
-  let chunkStartLine = 1;
-  let braceDepth = 0;
-  let inClass = false;
-  let inMethod = false;
-  let className: string | undefined;
-  let methodName: string | undefined;
-  let chunkBaseDepth = 0;
-  let annotations: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    // Skip comments for logic but include in chunk
-    const isComment = trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*");
-
-    // Track strict brace depth
-    const openBraces = (line.match(/\{/g) || []).length;
-    const closeBraces = (line.match(/\}/g) || []).length;
-
-    // Check for annotations
-    if (trimmed.startsWith("@") && !isComment) {
-      if (currentChunk.length === 0 && annotations.length === 0) {
-        chunkStartLine = i + 1;
-      }
-      annotations.push(line);
-      // Annotations are part of the next chunk
-      currentChunk.push(line);
-      continue;
-    }
-
-    // Detect Class/Interface
-    const classMatch = trimmed.match(/(?:public|protected|private)?\s*(?:static)?\s*(?:class|interface|enum)\s+(\w+)/);
-    if (classMatch && !isComment) {
-      // If we are already in a chunk (e.g. previous class ended), push it
-      // But if we are just starting (annotations only), keep going
-      if (currentChunk.length > annotations.length && braceDepth === chunkBaseDepth) {
-        const content = currentChunk.join("\n");
-        chunks.push({
-          id: generateChunkId(options.filePath, content, chunkStartLine),
-          filePath: options.filePath,
-          content,
-          startLine: chunkStartLine,
-          endLine: i,
-          chunkType: inClass ? "class" : "file", // inner class
-          name: className,
-          language: options.language,
-          context
-        });
-        currentChunk = [...annotations]; // Start new chunk with potential accumulated annotations
-        chunkStartLine = i + 1 - annotations.length;
-      } else if (currentChunk.length === 0) {
-        chunkStartLine = i + 1;
-      }
-
-      inClass = true;
-      inMethod = false;
-      className = classMatch[1];
-      chunkBaseDepth = braceDepth;
-      annotations = [];
-    }
-
-    // Detect Method (heuristic: access modifier + type + name + (args) + {)
-    // Avoid control structures like if/for/while/switch/catch
-    const methodMatch = trimmed.match(/(?:public|protected|private)\s+(?:[\w<>?\[\]]+\s+)(\w+)\s*\(/);
-    const isControlFlow = /^(if|for|while|switch|catch|try)\b/.test(trimmed);
-
-    if (methodMatch && !isControlFlow && !isComment) {
-      // if we are inside a class, this is a method chunk
-      if (braceDepth === chunkBaseDepth + 1) { // Direct member of class
-        // Previous logical block (fields, etc) ends here
-        if (currentChunk.length > annotations.length) {
-          const content = currentChunk.join("\n");
-          chunks.push({
-            id: generateChunkId(options.filePath, content, chunkStartLine),
-            filePath: options.filePath,
-            content,
-            startLine: chunkStartLine,
-            endLine: i,
-            chunkType: "block",
-            name: className, // Context of class
-            language: options.language,
-            context
-          });
-        }
-        currentChunk = [...annotations];
-        chunkStartLine = i + 1 - annotations.length;
-
-        methodName = methodMatch[1];
-        inMethod = true;
-        annotations = [];
-      }
-    }
-
-    currentChunk.push(line);
-    braceDepth += openBraces - closeBraces;
-
-    // Check if block ended (method or class)
-    // We close the chunk if we return to the depth where we started THIS chunk
-    // But we need to handle the case where we just closed the class itself
-
-    // Logic: If we are in a method, and brace depth returns to class level -> method closed
-    if (inMethod && braceDepth === chunkBaseDepth + 1 && closeBraces > 0) {
-      const content = currentChunk.join("\n");
-      chunks.push({
-        id: generateChunkId(options.filePath, content, chunkStartLine),
-        filePath: options.filePath,
-        content,
-        startLine: chunkStartLine,
-        endLine: i + 1,
-        chunkType: "method",
-        name: methodName,
-        language: options.language,
-        context
-      });
-      currentChunk = [];
-      inMethod = false;
-      methodName = undefined;
-      chunkStartLine = i + 2;
-    }
-    // If brace depth returns to chunkBaseDepth -> class closed
-    else if (inClass && braceDepth === chunkBaseDepth && closeBraces > 0) {
-      const content = currentChunk.join("\n");
-      chunks.push({
-        id: generateChunkId(options.filePath, content, chunkStartLine),
-        filePath: options.filePath,
-        content,
-        startLine: chunkStartLine,
-        endLine: i + 1,
-        chunkType: "class",
-        name: className,
-        language: options.language,
-        context
-      });
-      currentChunk = [];
-      inClass = false;
-      className = undefined;
-      chunkStartLine = i + 2;
-    }
-
-    // Safety break for very large chunks
-    if (currentChunk.join("\n").length > (options.maxChunkSize * 3)) {
-      // If a single method is massive, we have to split it.
-      // enforceTokenLimits will handle strict splitting, but we should probably 
-      // force a commit here to avoid memory pressure if it's crazy huge
-    }
-
-    if (closeBraces > 0 && annotations.length > 0) chunks.push(...[]); // no-op just to use variable
-    if (openBraces > 0) annotations = []; // Clear annotations if we opened a brace (they were consumed)
-  }
-
-  // Remaining content
-  if (currentChunk.length > 0) {
-    const content = currentChunk.join("\n");
-    if (content.trim().length > 0) {
-      chunks.push({
-        id: generateChunkId(options.filePath, content, chunkStartLine),
-        filePath: options.filePath,
-        content,
-        startLine: chunkStartLine,
-        endLine: lines.length,
-        chunkType: "file",
-        language: options.language,
-        context
-      });
-    }
-  }
-
-  // Fallback if regex failed to find anything
-  if (chunks.length === 0) {
-    return chunkByFixedSize(options);
-  }
-
-  return chunks;
-}
-
-/**
- * Chunks code by fixed size with overlap
- */
-function chunkByFixedSize(options: Required<ChunkOptions>): CodeChunk[] {
-  const chunks: CodeChunk[] = [];
-  const lines = options.content.split("\n");
-  const context = extractContext(options.content, options.language);
-
+  
   let currentLines: string[] = [];
-  let currentSize = 0;
+  let currentTokens = 0;
   let chunkStartLine = 1;
-
+  
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    currentLines.push(line);
-    currentSize += line.length + 1; // +1 for newline
-
-    // If we've reached max chunk size
-    if (currentSize >= options.maxChunkSize) {
+    const lineTokens = countTokens(line + "\n");
+    
+    // If we've reached max tokens
+    if (currentTokens + lineTokens > options.maxTokens && currentLines.length > 0) {
       const content = currentLines.join("\n");
+      const actualTokens = countTokens(content);
+      
       chunks.push({
         id: generateChunkId(options.filePath, content, chunkStartLine),
         filePath: options.filePath,
         content,
         startLine: chunkStartLine,
-        endLine: i + 1,
+        endLine: i,
         chunkType: "block",
         language: options.language,
         context,
+        tokenCount: actualTokens,
       });
-
-      // Calculate overlap
-      const overlapLines = Math.floor(options.chunkOverlap / 50); // Approximate lines
-      currentLines = currentLines.slice(-overlapLines);
-      currentSize = currentLines.reduce((sum, l) => sum + l.length + 1, 0);
-      chunkStartLine = i + 1 - overlapLines + 1;
+      
+      // Calculate overlap in lines (approximate)
+      let overlapLines: string[] = [];
+      let overlapTokenCount = 0;
+      for (let j = currentLines.length - 1; j >= 0 && overlapTokenCount < options.chunkOverlapTokens; j--) {
+        overlapLines.unshift(currentLines[j]);
+        overlapTokenCount += countTokens(currentLines[j] + "\n");
+      }
+      
+      currentLines = [...overlapLines, line];
+      currentTokens = overlapTokenCount + lineTokens;
+      chunkStartLine = i + 1 - overlapLines.length;
+    } else {
+      currentLines.push(line);
+      currentTokens += lineTokens;
     }
   }
-
+  
   // Add remaining content as final chunk
   if (currentLines.length > 0) {
     const content = currentLines.join("\n");
+    const actualTokens = countTokens(content);
+    
     chunks.push({
       id: generateChunkId(options.filePath, content, chunkStartLine),
       filePath: options.filePath,
@@ -967,10 +574,19 @@ function chunkByFixedSize(options: Required<ChunkOptions>): CodeChunk[] {
       chunkType: "block",
       language: options.language,
       context,
+      tokenCount: actualTokens,
     });
   }
-
+  
   return chunks;
+}
+
+/**
+ * Legacy function for backwards compatibility
+ * @deprecated Use chunkByTokens instead
+ */
+function chunkByFixedSize(options: Required<ChunkOptions>): CodeChunk[] {
+  return chunkByTokens(options);
 }
 
 /**
@@ -981,36 +597,22 @@ export function chunkCode(options: ChunkOptions): CodeChunk[] {
     filePath: options.filePath,
     content: options.content,
     language: options.language,
+    maxTokens: options.maxTokens || MAX_TOKENS_PER_CHUNK,
+    chunkOverlapTokens: options.chunkOverlapTokens || DEFAULT_CHUNK_OVERLAP_TOKENS,
+    // Legacy options mapping
     maxChunkSize: options.maxChunkSize || 1000,
     chunkOverlap: options.chunkOverlap || 200,
   };
-
-  // Force fixed-size chunking for minified files to prevent context length errors
-  if (fullOptions.filePath.includes(".min.")) {
-    const rawChunks = chunkByFixedSize(fullOptions);
-    return enforceTokenLimits(rawChunks);
-  }
-
+  
   // Route to appropriate chunking strategy
-  let chunks: CodeChunk[] = [];
   if (fullOptions.language === "typescript" || fullOptions.language === "javascript") {
-    chunks = chunkTypeScriptJavaScript(fullOptions);
+    return chunkTypeScriptJavaScript(fullOptions);
   } else if (fullOptions.language === "python") {
-    chunks = chunkPython(fullOptions);
-  } else if (["html", "vue", "svelte"].includes(fullOptions.language)) {
-    chunks = chunkHtml(fullOptions);
-  } else if (["css", "scss", "sass", "less"].includes(fullOptions.language)) {
-    chunks = chunkCss(fullOptions);
-  } else if (fullOptions.language === "json") {
-    chunks = chunkJson(fullOptions);
-  } else if (fullOptions.language === "java") {
-    chunks = chunkJava(fullOptions);
+    return chunkPython(fullOptions);
   } else {
-    // For other languages, use fixed-size chunking
-    chunks = chunkByFixedSize(fullOptions);
+    // For other languages, use token-based chunking
+    return chunkByTokens(fullOptions);
   }
-
-  return enforceTokenLimits(chunks);
 }
 
 /**
@@ -1019,15 +621,29 @@ export function chunkCode(options: ChunkOptions): CodeChunk[] {
 export function chunkFile(
   filePath: string,
   language: string,
-  maxChunkSize?: number,
-  chunkOverlap?: number
+  maxTokens?: number,
+  chunkOverlapTokens?: number
 ): CodeChunk[] {
   const content = fs.readFileSync(filePath, "utf-8");
   return chunkCode({
     filePath,
     content,
     language,
-    maxChunkSize,
-    chunkOverlap,
+    maxTokens,
+    chunkOverlapTokens,
   });
+}
+
+/**
+ * Utility to check if content would fit in a single embedding
+ */
+export function wouldFitInSingleEmbedding(content: string, maxTokens = MAX_TOKENS_PER_CHUNK): boolean {
+  return countTokens(content) <= maxTokens;
+}
+
+/**
+ * Get the maximum tokens allowed per chunk
+ */
+export function getMaxTokensPerChunk(): number {
+  return MAX_TOKENS_PER_CHUNK;
 }

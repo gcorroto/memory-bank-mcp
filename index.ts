@@ -14,6 +14,7 @@ import * as path from "path";
 import { createEmbeddingService, EmbeddingService } from "./common/embeddingService.js";
 import { createVectorStore, VectorStore } from "./common/vectorStore.js";
 import { createIndexManager, IndexManager } from "./common/indexManager.js";
+import { createProjectKnowledgeService, ProjectKnowledgeService } from "./common/projectKnowledgeService.js";
 
 // Import tools
 import { indexCode } from "./tools/indexCode.js";
@@ -22,6 +23,8 @@ import { readFile } from "./tools/readFile.js";
 import { writeFile } from "./tools/writeFile.js";
 import { getStats } from "./tools/getStats.js";
 import { analyzeCoverage } from "./tools/analyzeCoverage.js";
+import { generateProjectDocs, generateProjectDocsToolDefinition } from "./tools/generateProjectDocs.js";
+import { getProjectDocs, getProjectDocsToolDefinition } from "./tools/getProjectDocs.js";
 
 import { VERSION } from "./common/version.js";
 
@@ -29,6 +32,7 @@ import { VERSION } from "./common/version.js";
 let embeddingService: EmbeddingService;
 let vectorStore: VectorStore;
 let indexManager: IndexManager;
+let projectKnowledgeService: ProjectKnowledgeService;
 let workspaceRoot: string;
 
 // Create the MCP Server
@@ -67,7 +71,7 @@ server.tool(
       indexManager,
       workspaceRoot
     );
-
+    
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -90,8 +94,8 @@ server.tool(
     minScore: z
       .number()
       .optional()
-      .default(0.7)
-      .describe("Puntuación mínima de similitud (0-1). Valores más altos = resultados más relevantes"),
+      .default(0.4)
+      .describe("Puntuación mínima de similitud (0-1). por defecto usa 0.4 y basado en el resultado ajusta el valor"),
     filterByFile: z
       .string()
       .optional()
@@ -112,7 +116,7 @@ server.tool(
       },
       indexManager
     );
-
+    
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -145,7 +149,7 @@ server.tool(
       },
       workspaceRoot
     );
-
+    
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -179,7 +183,7 @@ server.tool(
       indexManager,
       workspaceRoot
     );
-
+    
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -193,7 +197,7 @@ server.tool(
   {},
   async () => {
     const result = await getStats(indexManager, embeddingService);
-
+    
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -208,15 +212,15 @@ server.tool(
   async () => {
     try {
       const result = await analyzeCoverage(indexManager, vectorStore, workspaceRoot);
-
+      
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
     } catch (error) {
       console.error(`Error in analyze_coverage: ${error}`);
       return {
-        content: [{
-          type: "text",
+        content: [{ 
+          type: "text", 
           text: JSON.stringify({
             success: false,
             message: `Error al analizar cobertura: ${error}`,
@@ -248,6 +252,68 @@ server.tool(
   }
 );
 
+// Tool: Generate Project Docs
+server.tool(
+  generateProjectDocsToolDefinition.name,
+  generateProjectDocsToolDefinition.description,
+  {
+    projectId: z
+      .string()
+      .optional()
+      .describe("ID del proyecto (opcional, usa 'default' si no se especifica)"),
+    force: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Forzar regeneración de todos los documentos aunque no hayan cambiado"),
+  },
+  async (args) => {
+    const result = await generateProjectDocs(
+      {
+        projectId: args.projectId,
+        force: args.force,
+      },
+      projectKnowledgeService,
+      vectorStore
+    );
+    
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// Tool: Get Project Docs
+server.tool(
+  getProjectDocsToolDefinition.name,
+  getProjectDocsToolDefinition.description,
+  {
+    document: z
+      .string()
+      .optional()
+      .default("summary")
+      .describe("Documento específico a recuperar: projectBrief, productContext, systemPatterns, techContext, activeContext, progress, all, summary"),
+    format: z
+      .enum(["full", "summary"])
+      .optional()
+      .default("full")
+      .describe("Formato de salida: 'full' devuelve contenido completo, 'summary' devuelve resumen de todos los docs"),
+  },
+  async (args) => {
+    const result = await getProjectDocs(
+      {
+        document: args.document,
+        format: args.format,
+      },
+      projectKnowledgeService
+    );
+    
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
 /**
  * Validates and initializes environment
  */
@@ -255,7 +321,7 @@ async function validateEnvironment() {
   console.error("=== Memory Bank MCP Server ===");
   console.error("Version:", VERSION);
   console.error("");
-
+  
   // Validate OpenAI API Key
   if (!process.env.OPENAI_API_KEY) {
     console.error("ERROR: OPENAI_API_KEY environment variable is required");
@@ -263,38 +329,59 @@ async function validateEnvironment() {
     throw new Error("Missing OPENAI_API_KEY environment variable");
   }
   console.error("✓ OpenAI API key configured");
-
+  
   // Get workspace root
   workspaceRoot = process.env.MEMORYBANK_WORKSPACE_ROOT || process.cwd();
   console.error(`✓ Workspace root: ${workspaceRoot}`);
-
+  
   // Storage path
   const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
   console.error(`✓ Storage path: ${storagePath}`);
-
+  
   // Embedding model configuration
   const embeddingModel = process.env.MEMORYBANK_EMBEDDING_MODEL || "text-embedding-3-small";
   const embeddingDimensions = process.env.MEMORYBANK_EMBEDDING_DIMENSIONS || "1536";
   console.error(`✓ Embedding model: ${embeddingModel} (${embeddingDimensions} dimensions)`);
-
+  
+  // Project Knowledge Layer configuration
+  const reasoningModel = process.env.MEMORYBANK_REASONING_MODEL || "gpt-5-mini";
+  const reasoningEffort = process.env.MEMORYBANK_REASONING_EFFORT || "medium";
+  const autoUpdateDocs = process.env.MEMORYBANK_AUTO_UPDATE_DOCS === "true";
+  console.error(`✓ Reasoning model: ${reasoningModel} (effort: ${reasoningEffort})`);
+  console.error(`✓ Auto-update docs: ${autoUpdateDocs}`);
+  
   // Initialize services
   console.error("\nInitializing services...");
-
+  
   try {
     embeddingService = createEmbeddingService();
     console.error("✓ Embedding service initialized");
-
+    
     vectorStore = createVectorStore();
     await vectorStore.initialize();
     console.error("✓ Vector store initialized");
-
-    indexManager = createIndexManager(embeddingService, vectorStore, workspaceRoot);
+    
+    indexManager = createIndexManager(embeddingService, vectorStore);
     console.error("✓ Index manager initialized");
+    
+    // Initialize Project Knowledge Service
+    try {
+      projectKnowledgeService = createProjectKnowledgeService();
+      console.error("✓ Project Knowledge service initialized");
+      
+      // Connect to Index Manager for auto-update hooks
+      indexManager.setProjectKnowledgeService(projectKnowledgeService);
+      indexManager.setAutoUpdateDocs(autoUpdateDocs);
+      console.error("✓ Project Knowledge service connected to Index Manager");
+    } catch (error) {
+      console.error(`⚠ Warning: Project Knowledge service not available: ${error}`);
+      console.error("  Project documentation features will be disabled.");
+    }
   } catch (error) {
     console.error(`ERROR: Failed to initialize services: ${error}`);
     throw error;
   }
-
+  
   console.error("\n✓ All services ready");
   console.error("");
 }
@@ -305,29 +392,33 @@ async function validateEnvironment() {
 async function startStdioServer() {
   try {
     console.error("Starting Memory Bank MCP Server in stdio mode...\n");
-
+    
     // Validate environment and initialize services
     await validateEnvironment();
-
+    
     // Create transport
     const transport = new StdioServerTransport();
-
+    
     console.error("Connecting server to transport...");
-
+    
     // Connect server to transport
     await server.connect(transport);
-
+    
     console.error("\n=== MCP Server Ready ===");
     console.error("Available tools:");
-    console.error("  - memorybank_index_code: Indexar código semánticamente");
-    console.error("  - memorybank_search: Buscar código por similitud semántica");
-    console.error("  - memorybank_read_file: Leer archivos del workspace");
-    console.error("  - memorybank_write_file: Escribir archivos y reindexar");
-    console.error("  - memorybank_get_stats: Obtener estadísticas del índice");
-    console.error("  - memorybank_analyze_coverage: Analizar cobertura de indexación");
+    console.error("  Core Memory Bank:");
+    console.error("    - memorybank_index_code: Indexar código semánticamente");
+    console.error("    - memorybank_search: Buscar código por similitud semántica");
+    console.error("    - memorybank_read_file: Leer archivos del workspace");
+    console.error("    - memorybank_write_file: Escribir archivos y reindexar");
+    console.error("    - memorybank_get_stats: Obtener estadísticas del índice");
+    console.error("    - memorybank_analyze_coverage: Analizar cobertura de indexación");
+    console.error("  Project Knowledge Layer:");
+    console.error("    - memorybank_generate_project_docs: Generar documentación con IA");
+    console.error("    - memorybank_get_project_docs: Leer documentación del proyecto");
     console.error("");
     console.error("Ready to accept requests...\n");
-
+    
   } catch (error) {
     console.error("Error starting stdio server:", error);
     console.error("Stack trace:", (error as Error).stack);

@@ -73,31 +73,26 @@ function buildDirectoryTree(
     pendingCount: 0,
     children: [],
   };
-
+  
   // Build tree structure
   const dirMap = new Map<string, DirectoryNode>();
   dirMap.set("", root);
-
-  // Helper to normalize paths to forward slashes
-  const normalize = (p: string) => p.replace(/\\/g, "/");
-
+  
   // Sort files by path for consistent tree building
-  const sortedFiles = [...files].sort((a, b) => normalize(a.path).localeCompare(normalize(b.path)));
-
+  const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path));
+  
   for (const file of sortedFiles) {
-    const normalizedPath = normalize(file.path);
-    const parts = normalizedPath.split("/");
+    const parts = file.path.split(path.sep);
     let currentPath = "";
-
+    
     // Create directory nodes
     for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
       const parentPath = currentPath;
-      currentPath = currentPath ? `${currentPath}/${part}` : part;
-
+      currentPath = currentPath ? path.join(currentPath, parts[i]) : parts[i];
+      
       if (!dirMap.has(currentPath)) {
         const dirNode: DirectoryNode = {
-          name: part,
+          name: parts[i],
           path: currentPath,
           type: "directory",
           status: "indexed",
@@ -106,25 +101,25 @@ function buildDirectoryTree(
           pendingCount: 0,
           children: [],
         };
-
+        
         dirMap.set(currentPath, dirNode);
-
+        
         const parent = dirMap.get(parentPath);
         if (parent && parent.children) {
           parent.children.push(dirNode);
         }
       }
     }
-
+    
     // Add file node
     const fileName = parts[parts.length - 1];
-    const fileDir = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+    const fileDir = parts.length > 1 ? path.dirname(file.path) : "";
     const parentDir = dirMap.get(fileDir);
-
+    
     if (parentDir && parentDir.children) {
-      const indexed = indexedFiles.has(normalize(file.path)); // Use normalized path for lookup
+      const indexed = indexedFiles.has(file.path);
       const pending = pendingFiles.has(file.path);
-
+      
       const fileNode: DirectoryNode = {
         name: fileName,
         path: file.path,
@@ -135,48 +130,39 @@ function buildDirectoryTree(
         lastIndexed: indexed ? new Date(indexedFiles.get(file.path)!.lastIndexed) : undefined,
         chunkCount: indexed ? indexedFiles.get(file.path)!.chunks : 0,
       };
-
+      
       parentDir.children.push(fileNode);
-    }
-  }
-
-  // Calculate stats bottom-up
-  const calculateNodeStats = (node: DirectoryNode) => {
-    if (node.type === "file") {
-      return;
-    }
-
-    let fileCount = 0;
-    let indexedCount = 0;
-    let pendingCount = 0;
-
-    if (node.children) {
-      node.children.sort((a, b) => {
-        if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
-
-      for (const child of node.children) {
-        if (child.type === "directory") {
-          calculateNodeStats(child);
-          fileCount += child.fileCount || 0;
-          indexedCount += child.indexedCount || 0;
-          pendingCount += child.pendingCount || 0;
-        } else {
-          fileCount++;
-          if (child.status === "indexed") indexedCount++;
-          if (child.status === "pending_reindex") pendingCount++;
-        }
+      
+      // Update parent stats
+      let current = parentDir;
+      while (current) {
+        current.fileCount = (current.fileCount || 0) + 1;
+        if (indexed) current.indexedCount = (current.indexedCount || 0) + 1;
+        if (pending) current.pendingCount = (current.pendingCount || 0) + 1;
+        
+        // Find parent
+        const parentPath = path.dirname(current.path);
+        current = parentPath !== current.path ? dirMap.get(parentPath === "." ? "" : parentPath)! : null as any;
       }
     }
-
-    node.fileCount = fileCount;
-    node.indexedCount = indexedCount;
-    node.pendingCount = pendingCount;
+  }
+  
+  // Sort children (directories first, then files)
+  const sortChildren = (node: DirectoryNode) => {
+    if (node.children) {
+      node.children.sort((a, b) => {
+        if (a.type !== b.type) {
+          return a.type === "directory" ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+      
+      node.children.forEach(sortChildren);
+    }
   };
-
-  calculateNodeStats(root);
-
+  
+  sortChildren(root);
+  
   return root;
 }
 
@@ -202,16 +188,13 @@ function calculateStats(
     languageBreakdown: {},
     directoryBreakdown: {},
   };
-
-  // Helper to normalize paths
-  const normalize = (p: string) => p.replace(/\\/g, "/");
-
+  
   for (const file of files) {
     stats.totalSize += file.size;
-
-    const indexed = indexedFiles.has(normalize(file.path));
+    
+    const indexed = indexedFiles.has(file.path);
     const pending = pendingFiles.has(file.path);
-
+    
     if (pending) {
       stats.pendingReindexFiles++;
     } else if (indexed) {
@@ -220,7 +203,7 @@ function calculateStats(
     } else {
       stats.notIndexedFiles++;
     }
-
+    
     // Language breakdown
     if (!stats.languageBreakdown[file.language]) {
       stats.languageBreakdown[file.language] = {
@@ -229,17 +212,17 @@ function calculateStats(
         chunks: 0,
       };
     }
-
+    
     stats.languageBreakdown[file.language].total++;
     if (indexed) {
       stats.languageBreakdown[file.language].indexed++;
-      stats.languageBreakdown[file.language].chunks += indexedFiles.get(normalize(file.path))!.chunks;
+      stats.languageBreakdown[file.language].chunks += indexedFiles.get(file.path)!.chunks;
     }
-
+    
     // Directory breakdown
     const dir = path.dirname(file.path);
     const topLevelDir = dir.split(path.sep)[0] || "(root)";
-
+    
     if (!stats.directoryBreakdown[topLevelDir]) {
       stats.directoryBreakdown[topLevelDir] = {
         total: 0,
@@ -247,16 +230,16 @@ function calculateStats(
         pending: 0,
       };
     }
-
+    
     stats.directoryBreakdown[topLevelDir].total++;
     if (indexed) stats.directoryBreakdown[topLevelDir].indexed++;
     if (pending) stats.directoryBreakdown[topLevelDir].pending++;
   }
-
+  
   stats.coveragePercentage = stats.totalFiles > 0
     ? (stats.indexedFiles / stats.totalFiles) * 100
     : 0;
-
+  
   return stats;
 }
 
@@ -268,7 +251,7 @@ function generateRecommendations(
   tree: DirectoryNode
 ): string[] {
   const recommendations: string[] = [];
-
+  
   // Low coverage
   if (stats.coveragePercentage < 50) {
     recommendations.push(
@@ -283,36 +266,36 @@ function generateRecommendations(
       `✅ Cobertura completa (100%). Todos los archivos están indexados`
     );
   }
-
+  
   // Pending reindex
   if (stats.pendingReindexFiles > 0) {
     recommendations.push(
       `🔄 Hay ${stats.pendingReindexFiles} archivo(s) con cambios pendientes de reindexación. Ejecuta memorybank_index_code({ forceReindex: true })`
     );
   }
-
+  
   // Language-specific recommendations
   const unindexedLanguages = Object.entries(stats.languageBreakdown)
     .filter(([_, data]) => data.indexed === 0 && data.total > 0)
     .map(([lang]) => lang);
-
+  
   if (unindexedLanguages.length > 0) {
     recommendations.push(
       `💡 Lenguajes sin indexar: ${unindexedLanguages.join(", ")}. Considera indexar estos archivos`
     );
   }
-
+  
   // Directory-specific recommendations
   const unindexedDirs = Object.entries(stats.directoryBreakdown)
     .filter(([_, data]) => data.indexed === 0 && data.total > 5)
     .map(([dir]) => dir);
-
+  
   if (unindexedDirs.length > 0) {
     recommendations.push(
       `📁 Directorios sin indexar: ${unindexedDirs.join(", ")}. Usa memorybank_index_code({ path: "directorio" })`
     );
   }
-
+  
   // Size recommendations
   const avgChunksPerFile = stats.indexedFiles > 0 ? stats.totalChunks / stats.indexedFiles : 0;
   if (avgChunksPerFile > 20) {
@@ -320,7 +303,7 @@ function generateRecommendations(
       `⚡ Promedio alto de chunks por archivo (${avgChunksPerFile.toFixed(1)}). Los archivos son muy grandes o el chunk_size es pequeño`
     );
   }
-
+  
   return recommendations;
 }
 
@@ -335,25 +318,25 @@ export async function analyzeCoverage(
   try {
     console.error("\n=== Analizando cobertura de indexación ===");
     console.error(`Workspace root: ${workspaceRoot}`);
-
+    
     // 1. Scan all code files in workspace with timeout protection
     console.error("Escaneando archivos del workspace...");
-
+    
     // Add timeout and file limit protection
     const scanStartTime = Date.now();
     const maxScanTime = 10000; // 10 seconds max
-
+    
     let allFiles: any[] = [];
     try {
-      allFiles = await scanFiles({
+      allFiles = scanFiles({ 
         rootPath: workspaceRoot,
         recursive: true
       });
-
+      
       const scanDuration = Date.now() - scanStartTime;
       console.error(`Escaneo completado en ${scanDuration}ms`);
       console.error(`Encontrados ${allFiles.length} archivos de código`);
-
+      
       // If scan took too long or found too many files, limit results
       if (scanDuration > maxScanTime || allFiles.length > 10000) {
         console.error(`⚠️ Workspace muy grande. Limitando análisis a primeros 1000 archivos`);
@@ -363,70 +346,64 @@ export async function analyzeCoverage(
       console.error(`Error escaneando archivos: ${error}`);
       throw error;
     }
-
-    // 2. Get indexed files stats in ONE batch query (Optimized)
-    console.error("Obteniendo estadísticas de archivos indexados...");
+    
+    // 2. Get indexed files from vector store
+    console.error("Obteniendo archivos indexados...");
     await vectorStore.initialize();
-
-    // This single call replaces thousands of potential DB queries
-    // It returns Map<filePath, { lastIndexed, chunkCount, fileHash }>
-    const indexedFileStats = await vectorStore.getIndexedFileStats();
-
+    const fileHashes = await vectorStore.getFileHashes();
+    
     // 3. Get index metadata
     const indexStats = await indexManager.getStats();
-
-    // 4. Adapt to expected format for efficient loopups
-    // Helper to normalize paths to forward slashes
-    const normalize = (p: string) => p.replace(/\\/g, "/");
-
-    // 4. Adapt to expected format for efficient loopups
+    
+    // 4. Build indexed files map with chunk counts
     const indexedFiles = new Map<string, { lastIndexed: number; chunks: number }>();
-    const normalizedStats = new Map<string, { lastIndexed: number; chunkCount: number; fileHash: string }>();
-
-    for (const [path, stats] of indexedFileStats) {
-      const normPath = normalize(path);
-      normalizedStats.set(normPath, stats);
-      indexedFiles.set(normPath, {
-        lastIndexed: stats.lastIndexed,
-        chunks: stats.chunkCount
-      });
+    
+    // Get chunks grouped by file from vector store
+    for (const [filePath, hash] of fileHashes) {
+      const chunks = await vectorStore.getChunksByFile(filePath);
+      if (chunks.length > 0) {
+        indexedFiles.set(filePath, {
+          lastIndexed: chunks[0].timestamp,
+          chunks: chunks.length,
+        });
+      }
     }
-
+    
     // 5. Identify pending files (files that changed)
     const pendingFiles = new Set<string>();
     for (const file of allFiles) {
-      const normPath = normalize(file.path);
-      const stats = normalizedStats.get(normPath);
-      if (stats) {
-        // Check if file hash matches the one in DB
-        if (stats.fileHash !== file.hash) {
-          pendingFiles.add(file.path); // keep original path for file system ops if needed
+      const indexed = indexedFiles.get(file.path);
+      if (indexed) {
+        // Check if file hash matches
+        const chunks = await vectorStore.getChunksByFile(file.path);
+        if (chunks.length > 0 && chunks[0].file_hash !== file.hash) {
+          pendingFiles.add(file.path);
         }
       }
     }
-
+    
     console.error(`Archivos indexados: ${indexedFiles.size}`);
     console.error(`Archivos con cambios: ${pendingFiles.size}`);
-
+    
     // 6. Build directory tree
     console.error("Construyendo árbol de directorios...");
     const tree = buildDirectoryTree(allFiles, indexedFiles, pendingFiles, workspaceRoot);
-
+    
     // 7. Calculate statistics
     console.error("Calculando estadísticas...");
     const stats = calculateStats(allFiles, indexedFiles, pendingFiles, indexStats.totalChunks);
-
+    
     // 8. Generate recommendations
     const recommendations = generateRecommendations(stats, tree);
-
+    
     // 9. Format message
     const message = `Análisis completado: ${stats.indexedFiles}/${stats.totalFiles} archivos indexados (${stats.coveragePercentage.toFixed(1)}% cobertura)`;
-
+    
     console.error("\n=== Análisis completado ===");
     console.error(message);
     console.error(`Total chunks: ${stats.totalChunks}`);
     console.error(`Pendientes: ${stats.pendingReindexFiles}`);
-
+    
     return {
       success: true,
       stats,

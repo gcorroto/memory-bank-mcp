@@ -1,6 +1,7 @@
 /**
  * @fileoverview Vector store for Memory Bank using LanceDB
  * Manages storage and retrieval of code embeddings
+ * Uses snake_case for field names for LanceDB SQL compatibility
  */
 
 import * as lancedb from "@lancedb/lancedb";
@@ -10,17 +11,17 @@ import * as path from "path";
 export interface ChunkRecord {
   id: string;              // Unique chunk ID
   vector: number[];        // Embedding vector (1536 dimensions)
-  filePath: string;        // Relative file path
+  file_path: string;       // Relative file path
   content: string;         // Code content
-  startLine: number;       // Starting line number
-  endLine: number;         // Ending line number
-  chunkType: string;       // Type: function, class, method, block, file
+  start_line: number;      // Starting line number
+  end_line: number;        // Ending line number
+  chunk_type: string;      // Type: function, class, method, block, file
   name?: string;           // Name of function/class
   language: string;        // Programming language
-  fileHash: string;        // Hash of the source file
+  file_hash: string;       // Hash of the source file
   timestamp: number;       // Timestamp of indexing
   context?: string;        // Additional context (imports, etc.)
-  projectId: string;       // Project identifier (hash of projectRoot)
+  project_id: string;      // Project identifier for multi-project support
 }
 
 export interface SearchResult {
@@ -35,6 +36,7 @@ export interface SearchOptions {
   filterByFile?: string;   // Filter by file path pattern
   filterByLanguage?: string; // Filter by language
   filterByType?: string;   // Filter by chunk type
+  filterByProject?: string; // Filter by project ID
 }
 
 /**
@@ -45,12 +47,12 @@ export class VectorStore {
   private table: lancedb.Table | null = null;
   private dbPath: string;
   private tableName: string;
-
+  
   constructor(dbPath: string = ".memorybank", tableName: string = "code_chunks") {
     this.dbPath = dbPath;
     this.tableName = tableName;
   }
-
+  
   /**
    * Initializes the vector database
    */
@@ -61,14 +63,14 @@ export class VectorStore {
         fs.mkdirSync(this.dbPath, { recursive: true });
         console.error(`Created database directory: ${this.dbPath}`);
       }
-
+      
       // Connect to LanceDB
       this.db = await lancedb.connect(this.dbPath);
       console.error(`Connected to LanceDB at ${this.dbPath}`);
-
+      
       // Check if table exists
       const tableNames = await this.db.tableNames();
-
+      
       if (tableNames.includes(this.tableName)) {
         // Open existing table
         this.table = await this.db.openTable(this.tableName);
@@ -84,7 +86,7 @@ export class VectorStore {
       throw error;
     }
   }
-
+  
   /**
    * Ensures database and table are initialized
    */
@@ -93,17 +95,17 @@ export class VectorStore {
       await this.initialize();
     }
   }
-
+  
   /**
    * Inserts chunks into the vector store
    */
   async insertChunks(chunks: ChunkRecord[]): Promise<void> {
     await this.ensureInitialized();
-
+    
     if (chunks.length === 0) {
       return;
     }
-
+    
     try {
       if (!this.table) {
         // Create table with first batch of data
@@ -119,42 +121,42 @@ export class VectorStore {
       throw error;
     }
   }
-
+  
   /**
    * Updates chunks in the vector store
    */
   async updateChunks(chunks: ChunkRecord[]): Promise<void> {
     await this.ensureInitialized();
-
+    
     if (chunks.length === 0) {
       return;
     }
-
+    
     try {
       // Delete old versions by ID
       const ids = chunks.map((c) => c.id);
       await this.deleteChunksByIds(ids);
-
+      
       // Insert updated versions
       await this.insertChunks(chunks);
-
+      
       console.error(`Updated ${chunks.length} chunks`);
     } catch (error) {
       console.error(`Error updating chunks: ${error}`);
       throw error;
     }
   }
-
+  
   /**
    * Deletes chunks by their IDs
    */
   async deleteChunksByIds(ids: string[]): Promise<void> {
     await this.ensureInitialized();
-
+    
     if (!this.table || ids.length === 0) {
       return;
     }
-
+    
     try {
       // LanceDB uses SQL-like syntax for deletion
       const idList = ids.map((id) => `'${id}'`).join(",");
@@ -165,26 +167,27 @@ export class VectorStore {
       throw error;
     }
   }
-
+  
   /**
-   * Deletes all chunks from a specific file in a specific project
+   * Deletes all chunks from a specific file
    */
-  async deleteChunksByFile(filePath: string, projectId: string): Promise<void> {
+  async deleteChunksByFile(filePath: string): Promise<void> {
     await this.ensureInitialized();
-
+    
     if (!this.table) {
       return;
     }
-
+    
     try {
-      await this.table.delete(`"filePath" = '${filePath}' AND "projectId" = '${projectId}'`);
-      console.error(`Deleted all chunks from file: ${filePath} (project: ${projectId.substring(0, 8)}...)`);
+      // Use snake_case field name for LanceDB SQL compatibility
+      await this.table.delete(`file_path = '${filePath}'`);
+      console.error(`Deleted all chunks from file: ${filePath}`);
     } catch (error) {
       console.error(`Error deleting chunks by file: ${error}`);
       throw error;
     }
   }
-
+  
   /**
    * Searches for similar chunks using vector similarity
    */
@@ -193,63 +196,67 @@ export class VectorStore {
     options: SearchOptions = {}
   ): Promise<SearchResult[]> {
     await this.ensureInitialized();
-
+    
     if (!this.table) {
       console.error("No table exists yet, returning empty results");
       return [];
     }
-
+    
     const topK = options.topK || 10;
     const minScore = options.minScore || 0.0;
-
+    
     try {
       // Start with vector search
       let query = this.table.search(queryVector).limit(topK);
-
-      // Apply filters if specified
+      
+      // Apply filters if specified (using snake_case field names)
       if (options.filterByFile) {
-        query = query.where(`filePath LIKE '%${options.filterByFile}%'`);
+        query = query.where(`file_path LIKE '%${options.filterByFile}%'`);
       }
-
+      
       if (options.filterByLanguage) {
         query = query.where(`language = '${options.filterByLanguage}'`);
       }
-
+      
       if (options.filterByType) {
-        query = query.where(`chunkType = '${options.filterByType}'`);
+        query = query.where(`chunk_type = '${options.filterByType}'`);
       }
-
+      
+      if (options.filterByProject) {
+        query = query.where(`project_id = '${options.filterByProject}'`);
+      }
+      
       // Execute search
       const results = await query.toArray();
-
+      
       // Convert to SearchResult format
       const searchResults: SearchResult[] = results.map((result: any) => {
         // LanceDB returns distance, convert to similarity score (0-1)
         // Using cosine similarity: score = 1 - (distance / 2)
         const distance = result._distance || 0;
         const score = Math.max(0, 1 - distance / 2);
-
+        
         return {
           chunk: {
             id: result.id,
             vector: result.vector,
-            filePath: result.filePath,
+            file_path: result.file_path,
             content: result.content,
-            startLine: result.startLine,
-            endLine: result.endLine,
-            chunkType: result.chunkType,
+            start_line: result.start_line,
+            end_line: result.end_line,
+            chunk_type: result.chunk_type,
             name: result.name,
             language: result.language,
-            fileHash: result.fileHash,
+            file_hash: result.file_hash,
             timestamp: result.timestamp,
             context: result.context,
-            projectId: result.projectId,
+            project_id: result.project_id,
           },
           score,
           distance,
         };
       });
-
+      
       // Filter by minimum score
       return searchResults.filter((r) => r.score >= minScore);
     } catch (error) {
@@ -257,43 +264,101 @@ export class VectorStore {
       throw error;
     }
   }
-
+  
   /**
    * Gets all chunks from a specific file
    */
   async getChunksByFile(filePath: string): Promise<ChunkRecord[]> {
     await this.ensureInitialized();
-
+    
     if (!this.table) {
       return [];
     }
-
+    
     try {
-      const results = await (this.table as any)
-        .where(`filePath = '${filePath}'`)
+      const results = await this.table
+        .query()
+        .where(`file_path = '${filePath}'`)
         .toArray();
-
+      
       return results.map((r: any) => ({
         id: r.id,
         vector: r.vector,
-        filePath: r.filePath,
+        file_path: r.file_path,
         content: r.content,
-        startLine: r.startLine,
-        endLine: r.endLine,
-        chunkType: r.chunkType,
+        start_line: r.start_line,
+        end_line: r.end_line,
+        chunk_type: r.chunk_type,
         name: r.name,
         language: r.language,
-        fileHash: r.fileHash,
+        file_hash: r.file_hash,
         timestamp: r.timestamp,
         context: r.context,
-        projectId: r.projectId,
+        project_id: r.project_id,
       }));
     } catch (error) {
       console.error(`Error getting chunks by file: ${error}`);
       return [];
     }
   }
-
+  
+  /**
+   * Gets all chunks, optionally filtered by project
+   */
+  async getAllChunks(projectId?: string): Promise<ChunkRecord[]> {
+    await this.ensureInitialized();
+    
+    if (!this.table) {
+      console.error("getAllChunks: No table exists");
+      return [];
+    }
+    
+    try {
+      let query = this.table.query();
+      
+      // Apply project filter using snake_case field name
+      if (projectId) {
+        query = query.where(`project_id = '${projectId}'`);
+        console.error(`getAllChunks: Filtering by project_id='${projectId}'`);
+      }
+      
+      const results = await query.toArray();
+      console.error(`getAllChunks: Got ${results.length} results`);
+      
+      // Debug: Check first result's content
+      if (results.length > 0) {
+        const first = results[0] as any;
+        console.error(`getAllChunks: First result file_path=${first.file_path}, content length=${first.content?.length || 0}`);
+      }
+      
+      return results.map((r: any) => ({
+        id: r.id,
+        vector: r.vector,
+        file_path: r.file_path,
+        content: r.content,
+        start_line: r.start_line,
+        end_line: r.end_line,
+        chunk_type: r.chunk_type,
+        name: r.name,
+        language: r.language,
+        file_hash: r.file_hash,
+        timestamp: r.timestamp,
+        context: r.context,
+        project_id: r.project_id,
+      }));
+    } catch (error) {
+      console.error(`Error getting all chunks: ${error}`);
+      return [];
+    }
+  }
+  
+  /**
+   * Gets chunks by project ID
+   */
+  async getChunksByProject(projectId: string): Promise<ChunkRecord[]> {
+    return this.getAllChunks(projectId);
+  }
+  
   /**
    * Gets statistics about the vector store
    */
@@ -305,7 +370,7 @@ export class VectorStore {
     lastUpdated?: Date;
   }> {
     await this.ensureInitialized();
-
+    
     if (!this.table) {
       return {
         totalChunks: 0,
@@ -314,27 +379,26 @@ export class VectorStore {
         typeCounts: {},
       };
     }
-
+    
     try {
-      // Use query().toArray() instead of direct toArray()
       const allChunks = await this.table.query().toArray();
-
+      
       const uniqueFiles = new Set<string>();
       const languageCounts: Record<string, number> = {};
       const typeCounts: Record<string, number> = {};
       let latestTimestamp = 0;
-
-      for (const chunk of allChunks) {
-        uniqueFiles.add(chunk.filePath);
-
+      
+      for (const chunk of allChunks as any[]) {
+        uniqueFiles.add(chunk.file_path);
+        
         languageCounts[chunk.language] = (languageCounts[chunk.language] || 0) + 1;
-        typeCounts[chunk.chunkType] = (typeCounts[chunk.chunkType] || 0) + 1;
-
+        typeCounts[chunk.chunk_type] = (typeCounts[chunk.chunk_type] || 0) + 1;
+        
         if (chunk.timestamp > latestTimestamp) {
           latestTimestamp = chunk.timestamp;
         }
       }
-
+      
       return {
         totalChunks: allChunks.length,
         fileCount: uniqueFiles.size,
@@ -347,17 +411,17 @@ export class VectorStore {
       throw error;
     }
   }
-
+  
   /**
    * Clears all data from the vector store
    */
   async clear(): Promise<void> {
     await this.ensureInitialized();
-
+    
     if (!this.table) {
       return;
     }
-
+    
     try {
       // Drop the table
       await this.db!.dropTable(this.tableName);
@@ -368,7 +432,7 @@ export class VectorStore {
       throw error;
     }
   }
-
+  
   /**
    * Closes the database connection
    */
@@ -378,76 +442,30 @@ export class VectorStore {
     this.table = null;
     this.db = null;
   }
-
+  
   /**
    * Gets file hashes for all indexed files
    */
   async getFileHashes(): Promise<Map<string, string>> {
     await this.ensureInitialized();
-
+    
     if (!this.table) {
       return new Map();
     }
-
+    
     try {
-      // Use query().toArray() instead of direct toArray()
       const allChunks = await this.table.query().toArray();
       const fileHashes = new Map<string, string>();
-
-      for (const chunk of allChunks) {
-        if (!fileHashes.has(chunk.filePath)) {
-          fileHashes.set(chunk.filePath, chunk.fileHash);
+      
+      for (const chunk of allChunks as any[]) {
+        if (!fileHashes.has(chunk.file_path)) {
+          fileHashes.set(chunk.file_path, chunk.file_hash);
         }
       }
-
+      
       return fileHashes;
     } catch (error) {
       console.error(`Error getting file hashes: ${error}`);
-      return new Map();
-    }
-  }
-  /**
-   * Gets aggregated statistics for all indexed files in a single query
-   * Returns a map of filePath -> { lastIndexed, chunkCount, fileHash }
-   */
-  async getIndexedFileStats(): Promise<Map<string, { lastIndexed: number; chunkCount: number; fileHash: string }>> {
-    await this.ensureInitialized();
-
-    if (!this.table) {
-      return new Map();
-    }
-
-    try {
-      // Fetch all chunks in one go - much faster than N queries
-      // querying only necessary columns to reduce memory usage
-      const allChunks = await this.table.query()
-        .select(['filePath', 'timestamp', 'fileHash'])
-        .toArray();
-
-      const stats = new Map<string, { lastIndexed: number; chunkCount: number; fileHash: string }>();
-
-      for (const chunk of allChunks) {
-        const current = stats.get(chunk.filePath);
-
-        if (!current) {
-          stats.set(chunk.filePath, {
-            lastIndexed: chunk.timestamp,
-            chunkCount: 1,
-            fileHash: chunk.fileHash
-          });
-        } else {
-          // Update stats
-          current.chunkCount++;
-          // Keep the latest timestamp
-          if (chunk.timestamp > current.lastIndexed) {
-            current.lastIndexed = chunk.timestamp;
-          }
-        }
-      }
-
-      return stats;
-    } catch (error) {
-      console.error(`Error getting indexed file stats: ${error}`);
       return new Map();
     }
   }

@@ -11,3 +11,7 @@ export * from "./readFile.js";
 export * from "./writeFile.js";
 export * from "./getStats.js";
 export * from "./analyzeCoverage.js";
+
+// Export Project Knowledge Layer tools
+export * from "./generateProjectDocs.js";
+export * from "./getProjectDocs.js";

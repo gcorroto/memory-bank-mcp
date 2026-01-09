@@ -28,13 +28,30 @@ Con Memory Bank, las IAs:
 
 ## 🚀 Características
 
+### Core Memory Bank (Búsqueda Precisa)
 - **🔍 Búsqueda Semántica**: Pregunta "¿cómo funciona la autenticación?" y obtén código relevante
-- **🧩 Chunking Inteligente**: AST parsing para TypeScript/JavaScript/Python
+- **🧩 Chunking Inteligente**: AST parsing para TS/JS/Python con límites de tokens (8192 máx)
 - **⚡ Actualización Incremental**: Solo reindexa archivos modificados (detección por hash)
 - **💾 Cache de Embeddings**: Evita regenerar embeddings innecesariamente
 - **🎯 Filtros Avanzados**: Por archivo, lenguaje, tipo de chunk
 - **📊 Estadísticas Detalladas**: Conoce el estado de tu índice en todo momento
 - **🔒 Privacidad**: Vector store local, respeta .gitignore y .memoryignore
+
+### Project Knowledge Layer (Conocimiento Global) 🆕
+- **📄 Documentación Automática**: Genera 6 documentos markdown estructurados del proyecto
+- **🧠 IA con Razonamiento**: Usa OpenAI Responses API con modelos de razonamiento (gpt-5-mini)
+- **🔄 Actualización Inteligente**: Solo regenera documentos afectados por cambios
+- **📚 Contexto Global**: Complementa búsqueda precisa con visión de alto nivel
+
+Los documentos generados incluyen:
+| Documento | Propósito |
+|-----------|-----------|
+| `projectBrief.md` | Descripción general del proyecto |
+| `productContext.md` | Perspectiva de negocio y usuarios |
+| `systemPatterns.md` | Patrones de arquitectura y diseño |
+| `techContext.md` | Stack tecnológico y dependencias |
+| `activeContext.md` | Estado actual de desarrollo |
+| `progress.md` | Seguimiento de cambios |
 
 ## 📋 Requisitos
 
@@ -81,13 +98,18 @@ Crea un archivo `.env` en la raíz de tu workspace (o configúralas en tu client
 # REQUERIDO: Tu API key de OpenAI
 OPENAI_API_KEY=sk-your-api-key-here
 
-# OPCIONAL: Configuración avanzada
+# OPCIONAL: Configuración de indexación
 MEMORYBANK_STORAGE_PATH=.memorybank              # Dónde almacenar el índice
 MEMORYBANK_EMBEDDING_MODEL=text-embedding-3-small # Modelo de OpenAI
 MEMORYBANK_EMBEDDING_DIMENSIONS=1536             # Dimensiones (1536 o 512)
-MEMORYBANK_CHUNK_SIZE=1000                       # Tamaño máximo de chunks
-MEMORYBANK_CHUNK_OVERLAP=200                     # Overlap entre chunks
+MEMORYBANK_MAX_TOKENS=7500                       # Tokens máx por chunk (límite: 8192)
+MEMORYBANK_CHUNK_OVERLAP_TOKENS=200              # Overlap en tokens entre chunks
 MEMORYBANK_WORKSPACE_ROOT=/path/to/project       # Raíz del workspace
+
+# OPCIONAL: Project Knowledge Layer (documentación con IA)
+MEMORYBANK_REASONING_MODEL=gpt-5-mini            # Modelo de razonamiento
+MEMORYBANK_REASONING_EFFORT=medium               # low/medium/high
+MEMORYBANK_AUTO_UPDATE_DOCS=false                # Auto-actualizar docs al indexar
 ```
 
 ### Configuración en Claude Desktop
@@ -152,7 +174,7 @@ Busca código por similitud semántica.
 **Parámetros:**
 - `query` (requerido): Consulta en lenguaje natural
 - `topK` (opcional): Número de resultados (default: 10)
-- `minScore` (opcional): Score mínimo 0-1 (default: 0.7)
+- `minScore` (opcional): Score mínimo 0-1 (default: 0.4)
 - `filterByFile` (opcional): Filtrar por patrón de archivo
 - `filterByLanguage` (opcional): Filtrar por lenguaje
 
@@ -203,6 +225,53 @@ Obtiene estadísticas del Memory Bank.
 **Ejemplo:**
 ```
 memorybank_get_stats({})
+```
+
+### `memorybank_analyze_coverage`
+
+Analiza la cobertura de indexación del proyecto.
+
+**Ejemplo:**
+```
+memorybank_analyze_coverage({})
+```
+
+### `memorybank_generate_project_docs` 🆕
+
+Genera documentación estructurada del proyecto usando IA con razonamiento (gpt-5-mini).
+
+**Parámetros:**
+- `projectId` (opcional): ID del proyecto
+- `force` (opcional): Forzar regeneración (default: false)
+
+**Ejemplo:**
+```
+memorybank_generate_project_docs({ force: true })
+```
+
+Genera 6 documentos markdown:
+- `projectBrief.md`: Descripción general
+- `productContext.md`: Perspectiva de negocio
+- `systemPatterns.md`: Patrones de arquitectura
+- `techContext.md`: Stack tecnológico
+- `activeContext.md`: Estado actual
+- `progress.md`: Seguimiento
+
+### `memorybank_get_project_docs` 🆕
+
+Lee la documentación del proyecto generada por IA.
+
+**Parámetros:**
+- `document` (opcional): Documento específico o "all"/"summary" (default: "summary")
+- `format` (opcional): "full" o "summary" (default: "full")
+
+**Ejemplo:**
+```
+// Obtener resumen de todos los docs
+memorybank_get_project_docs({ document: "summary" })
+
+// Obtener documento específico
+memorybank_get_project_docs({ document: "systemPatterns" })
 ```
 
 ## 🎯 Casos de Uso
@@ -391,6 +460,11 @@ memorybank_index_code({ forceReindex: true })
 4. Push al branch (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
+## 📖 Documentación Adicional
+
+- [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md): Guía completa para agentes de IA
+- [wiki/Developer-Guide.md](wiki/Developer-Guide.md): Guía para desarrolladores
+- [wiki/API-Reference.md](wiki/API-Reference.md): Referencia completa de API
 
 ## 🎓 Inspiración
 
