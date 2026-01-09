@@ -987,7 +987,8 @@ export function chunkCode(options: ChunkOptions): CodeChunk[] {
 
   // Force fixed-size chunking for minified files to prevent context length errors
   if (fullOptions.filePath.includes(".min.")) {
-    return chunkByFixedSize(fullOptions);
+    const rawChunks = chunkByFixedSize(fullOptions);
+    return enforceTokenLimits(rawChunks);
   }
 
   // Route to appropriate chunking strategy
