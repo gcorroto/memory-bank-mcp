@@ -7,6 +7,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import ignoreLib from "ignore";
+import { logger } from "./logger.js";
 
 // Handle ignore library export
 const ignore = typeof ignoreLib === 'function' ? ignoreLib : (ignoreLib as any).default;
@@ -101,9 +102,9 @@ export function loadIgnorePatterns(rootPath: string): any {
     try {
       const gitignoreContent = fs.readFileSync(gitignorePath, "utf-8");
       ig.add(gitignoreContent);
-      console.error(`Loaded .gitignore patterns from ${gitignorePath}`);
+      logger.debug(`Loaded .gitignore patterns from ${gitignorePath}`);
     } catch (error) {
-      console.error(`Warning: Could not read .gitignore: ${error}`);
+      logger.warn(`Could not read .gitignore: ${error}`);
     }
   }
 
@@ -113,9 +114,9 @@ export function loadIgnorePatterns(rootPath: string): any {
     try {
       const memoryignoreContent = fs.readFileSync(memoryignorePath, "utf-8");
       ig.add(memoryignoreContent);
-      console.error(`Loaded .memoryignore patterns from ${memoryignorePath}`);
+      logger.debug(`Loaded .memoryignore patterns from ${memoryignorePath}`);
     } catch (error) {
-      console.error(`Warning: Could not read .memoryignore: ${error}`);
+      logger.warn(`Could not read .memoryignore: ${error}`);
     }
   }
 
@@ -187,7 +188,7 @@ async function scanDirectoryRecursive(
   try {
     entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
   } catch (error) {
-    console.error(`Warning: Could not read directory ${dirPath}: ${error}`);
+    logger.warn(`Could not read directory ${dirPath}: ${error}`);
     return;
   }
 
@@ -240,7 +241,7 @@ async function scanDirectoryRecursive(
 
         // Check file size limit
         if (stats.size > options.maxFileSize) {
-          console.error(`Skipping large file (${stats.size} bytes): ${relativePath}`);
+          logger.warn(`Skipping large file (${stats.size} bytes): ${relativePath}`);
           return;
         }
 
@@ -259,7 +260,7 @@ async function scanDirectoryRecursive(
           extension,
         });
       } catch (error) {
-        console.error(`Warning: Could not process file ${fullPath}: ${error}`);
+        logger.warn(`Could not process file ${fullPath}: ${error}`);
       }
     }));
   }
@@ -287,7 +288,7 @@ export async function scanFiles(options: ScanOptions): Promise<FileMetadata[]> {
     throw new Error(`Root path is not a directory: ${fullOptions.rootPath}`);
   }
 
-  console.error(`Scanning files in: ${fullOptions.rootPath}`);
+  logger.info(`Scanning files in: ${fullOptions.rootPath}`);
 
   // Load ignore patterns
   const ig = loadIgnorePatterns(fullOptions.rootPath);
@@ -302,7 +303,7 @@ export async function scanFiles(options: ScanOptions): Promise<FileMetadata[]> {
     results
   );
 
-  console.error(`Found ${results.length} code files to index`);
+  logger.info(`Found ${results.length} code files to index`);
 
   return results;
 }
@@ -343,7 +344,7 @@ export async function scanSingleFile(filePath: string, rootPath: string, project
       extension,
     };
   } catch (error) {
-    console.error(`Error scanning file ${filePath}: ${error}`);
+    logger.error(`Error scanning file ${filePath}:`, error);
     return null;
   }
 }

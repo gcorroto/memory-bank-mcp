@@ -3,6 +3,7 @@
  * Generates vector embeddings for code chunks
  */
 
+import { logger } from "./logger.js";
 import OpenAI from "openai";
 import * as crypto from "crypto";
 import * as fs from "fs";
@@ -194,7 +195,7 @@ export class EmbeddingService {
         // Check if it's a rate limit error
         if (error?.status === 429 || error?.code === "rate_limit_exceeded") {
           const backoffMs = Math.pow(2, attempt) * 1000; // Exponential backoff
-          console.error(
+          logger.warn(
             `Rate limit hit, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`
           );
           await this.sleep(backoffMs);
@@ -204,7 +205,7 @@ export class EmbeddingService {
         // Check if it's a temporary error
         if (error?.status >= 500 && error?.status < 600) {
           const backoffMs = Math.pow(2, attempt) * 1000;
-          console.error(
+          logger.warn(
             `Server error ${error.status}, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`
           );
           await this.sleep(backoffMs);
@@ -282,7 +283,7 @@ export class EmbeddingService {
     }
 
     if (toGenerate.length > 0) {
-      console.error(
+      logger.info(
         `Generating embeddings: ${toGenerate.length} new, ${chunks.length - toGenerate.length} cached`
       );
 
@@ -291,7 +292,7 @@ export class EmbeddingService {
         const batch = toGenerate.slice(i, i + this.options.batchSize);
         const batchTexts = batch.map((item) => item.content);
 
-        console.error(
+        logger.info(
           `Processing batch ${Math.floor(i / this.options.batchSize) + 1}/${Math.ceil(toGenerate.length / this.options.batchSize)}`
         );
 
@@ -317,7 +318,7 @@ export class EmbeddingService {
             };
           }
         } catch (error) {
-          console.error(`Error generating batch embeddings: ${error}`);
+          logger.error(`Error generating batch embeddings:`, error);
           throw error;
         }
 
@@ -350,7 +351,7 @@ export class EmbeddingService {
 
       return response.data[0].embedding;
     } catch (error) {
-      console.error(`Error generating query embedding: ${error} `);
+      logger.error(`Error generating query embedding:`, error);
       throw error;
     }
   }
@@ -363,7 +364,7 @@ export class EmbeddingService {
     if (fs.existsSync(this.options.cachePath)) {
       fs.unlinkSync(this.options.cachePath);
     }
-    console.error("Embedding cache cleared");
+    logger.info("Embedding cache cleared");
   }
 
   /**

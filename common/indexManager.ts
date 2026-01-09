@@ -9,6 +9,7 @@ import { scanFiles, scanSingleFile, FileMetadata } from "./fileScanner.js";
 import { chunkCode, CodeChunk } from "./chunker.js";
 import { EmbeddingService } from "./embeddingService.js";
 import { VectorStore, ChunkRecord } from "./vectorStore.js";
+import { logger } from "./logger.js";
 
 export interface IndexMetadata {
   version: string;
@@ -65,7 +66,7 @@ export class IndexManager {
         return JSON.parse(data);
       }
     } catch (error) {
-      console.error(`Warning: Could not load index metadata: ${error}`);
+      logger.warn(`Could not load index metadata: ${error}`);
     }
 
     return {
@@ -87,7 +88,7 @@ export class IndexManager {
 
       fs.writeFileSync(this.metadataPath, JSON.stringify(this.metadata, null, 2));
     } catch (error) {
-      console.error(`Warning: Could not save index metadata: ${error}`);
+      logger.warn(`Could not save index metadata: ${error}`);
     }
   }
 
@@ -122,11 +123,11 @@ export class IndexManager {
     try {
       // Check if file needs reindexing
       if (!this.needsReindexing(file, forceReindex)) {
-        console.error(`Skipping ${file.path} (no changes)`);
+        logger.debug(`Skipping ${file.path} (no changes)`);
         return { chunksCreated: 0 };
       }
 
-      console.error(`Indexing: ${file.path}`);
+      logger.info(`Indexing: ${file.path}`);
 
       // Read file content
       const content = fs.readFileSync(file.absolutePath, "utf-8");
@@ -145,17 +146,17 @@ export class IndexManager {
       });
 
       if (chunks.length === 0) {
-        console.error(`Warning: No chunks created for ${file.path}`);
+        logger.warn(`No chunks created for ${file.path}`);
         return { chunksCreated: 0 };
       }
 
-      console.error(`  Created ${chunks.length} chunks`);
+      logger.debug(`  Created ${chunks.length} chunks`);
 
       // Filter out invalid chunks (fail-safe)
       const validChunks = chunks.filter(c => c.content && c.content.trim().length > 0 && c.content.trim() !== "}");
 
       if (validChunks.length === 0) {
-        console.error(`Warning: No valid chunks after filtering for ${file.path}`);
+        logger.warn(`No valid chunks after filtering for ${file.path}`);
         return { chunksCreated: 0 };
       }
 
@@ -169,11 +170,11 @@ export class IndexManager {
         embeddingInputs
       );
 
-      console.error(`  Generated ${embeddings.length} embeddings`);
+      logger.debug(`  Generated ${embeddings.length} embeddings`);
 
       // Prepare chunk records for storage
       const timestamp = Date.now();
-      const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
+      const chunkRecords: ChunkRecord[] = validChunks.map((chunk, i) => ({
         id: chunk.id,
         vector: embeddings[i].vector,
         filePath: chunk.filePath,
@@ -194,7 +195,7 @@ export class IndexManager {
       // Insert new chunks
       await this.vectorStore.insertChunks(chunkRecords);
 
-      console.error(`  Stored ${chunkRecords.length} chunks in vector store`);
+      logger.debug(`  Stored ${chunkRecords.length} chunks in vector store`);
 
       // Update metadata
       this.metadata.files[file.path] = {
@@ -211,7 +212,7 @@ export class IndexManager {
       return { chunksCreated: chunks.length };
     } catch (error) {
       const errorMsg = `Error indexing ${file.path}: ${error}`;
-      console.error(errorMsg);
+      logger.error(errorMsg);
       return { chunksCreated: 0, error: errorMsg };
     }
   }
@@ -227,15 +228,15 @@ export class IndexManager {
   }> {
     const startTime = Date.now();
 
-    console.error(`\n=== Starting indexing process ===`);
-    console.error(`Root path: ${options.rootPath}`);
-    console.error(`Force reindex: ${options.forceReindex || false}`);
+    logger.info(`=== Starting indexing process ===`);
+    logger.info(`Root path: ${options.rootPath}`);
+    logger.info(`Force reindex: ${options.forceReindex || false}`);
 
     // Initialize vector store
     await this.vectorStore.initialize();
 
     // Scan files
-    console.error(`\nScanning files...`);
+    logger.info(`Scanning files...`);
     const files = await scanFiles({
       rootPath: options.rootPath,
       projectRoot: options.projectRoot,
@@ -243,7 +244,7 @@ export class IndexManager {
     });
 
     if (files.length === 0) {
-      console.error("No files found to index");
+      logger.warn("No files found to index");
       return {
         filesProcessed: 0,
         chunksCreated: 0,
@@ -257,10 +258,10 @@ export class IndexManager {
       this.needsReindexing(file, options.forceReindex || false)
     );
 
-    console.error(`\nFound ${files.length} files, ${filesToIndex.length} need indexing`);
+    logger.info(`Found ${files.length} files, ${filesToIndex.length} need indexing`);
 
     if (filesToIndex.length === 0) {
-      console.error("All files are up to date");
+      logger.info("All files are up to date");
       return {
         filesProcessed: 0,
         chunksCreated: 0,
@@ -280,10 +281,10 @@ export class IndexManager {
       const batchNum = Math.floor(i / batchSize) + 1;
       const totalBatches = Math.ceil(filesToIndex.length / batchSize);
 
-      console.error(`\nProcessing batch ${batchNum}/${totalBatches} (${batch.length} files)`);
+      logger.info(`Processing batch ${batchNum}/${totalBatches} (${batch.length} files)`);
 
       const batchPromises = batch.map(async (file, index) => {
-        console.error(`[${i + index + 1}/${filesToIndex.length}] Processing ${file.path}`);
+        logger.debug(`[${i + index + 1}/${filesToIndex.length}] Processing ${file.path}`);
         return this.indexFile(file, options.forceReindex || false, false); // Don't save metadata per file
       });
 
@@ -311,11 +312,11 @@ export class IndexManager {
 
     const duration = Date.now() - startTime;
 
-    console.error(`\n=== Indexing complete ===`);
-    console.error(`Files processed: ${processedFiles}`);
-    console.error(`Chunks created: ${totalChunks}`);
-    console.error(`Errors: ${errors.length}`);
-    console.error(`Duration: ${(duration / 1000).toFixed(2)}s`);
+    logger.info(`=== Indexing complete ===`);
+    logger.info(`Files processed: ${processedFiles}`);
+    logger.info(`Chunks created: ${totalChunks}`);
+    logger.info(`Errors: ${errors.length}`);
+    logger.info(`Duration: ${(duration / 1000).toFixed(2)}s`);
 
     return {
       filesProcessed: processedFiles,
@@ -463,7 +464,7 @@ export class IndexManager {
     // Clear embedding cache
     this.embeddingService.clearCache();
 
-    console.error("Index cleared");
+    logger.info("Index cleared");
   }
 
   /**
@@ -476,7 +477,7 @@ export class IndexManager {
     delete this.metadata.files[filePath];
     this.saveMetadata();
 
-    console.error(`Removed ${filePath} from index`);
+    logger.info(`Removed ${filePath} from index`);
   }
 }
 
