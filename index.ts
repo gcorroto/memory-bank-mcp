@@ -67,7 +67,7 @@ server.tool(
       indexManager,
       workspaceRoot
     );
-    
+
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -112,7 +112,7 @@ server.tool(
       },
       indexManager
     );
-    
+
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -145,7 +145,7 @@ server.tool(
       },
       workspaceRoot
     );
-    
+
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -179,7 +179,7 @@ server.tool(
       indexManager,
       workspaceRoot
     );
-    
+
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -193,7 +193,7 @@ server.tool(
   {},
   async () => {
     const result = await getStats(indexManager, embeddingService);
-    
+
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -208,15 +208,15 @@ server.tool(
   async () => {
     try {
       const result = await analyzeCoverage(indexManager, vectorStore, workspaceRoot);
-      
+
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
     } catch (error) {
       console.error(`Error in analyze_coverage: ${error}`);
       return {
-        content: [{ 
-          type: "text", 
+        content: [{
+          type: "text",
           text: JSON.stringify({
             success: false,
             message: `Error al analizar cobertura: ${error}`,
@@ -255,7 +255,7 @@ async function validateEnvironment() {
   console.error("=== Memory Bank MCP Server ===");
   console.error("Version:", VERSION);
   console.error("");
-  
+
   // Validate OpenAI API Key
   if (!process.env.OPENAI_API_KEY) {
     console.error("ERROR: OPENAI_API_KEY environment variable is required");
@@ -263,38 +263,38 @@ async function validateEnvironment() {
     throw new Error("Missing OPENAI_API_KEY environment variable");
   }
   console.error("✓ OpenAI API key configured");
-  
+
   // Get workspace root
   workspaceRoot = process.env.MEMORYBANK_WORKSPACE_ROOT || process.cwd();
   console.error(`✓ Workspace root: ${workspaceRoot}`);
-  
+
   // Storage path
   const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
   console.error(`✓ Storage path: ${storagePath}`);
-  
+
   // Embedding model configuration
   const embeddingModel = process.env.MEMORYBANK_EMBEDDING_MODEL || "text-embedding-3-small";
   const embeddingDimensions = process.env.MEMORYBANK_EMBEDDING_DIMENSIONS || "1536";
   console.error(`✓ Embedding model: ${embeddingModel} (${embeddingDimensions} dimensions)`);
-  
+
   // Initialize services
   console.error("\nInitializing services...");
-  
+
   try {
     embeddingService = createEmbeddingService();
     console.error("✓ Embedding service initialized");
-    
+
     vectorStore = createVectorStore();
     await vectorStore.initialize();
     console.error("✓ Vector store initialized");
-    
-    indexManager = createIndexManager(embeddingService, vectorStore);
+
+    indexManager = createIndexManager(embeddingService, vectorStore, workspaceRoot);
     console.error("✓ Index manager initialized");
   } catch (error) {
     console.error(`ERROR: Failed to initialize services: ${error}`);
     throw error;
   }
-  
+
   console.error("\n✓ All services ready");
   console.error("");
 }
@@ -305,18 +305,18 @@ async function validateEnvironment() {
 async function startStdioServer() {
   try {
     console.error("Starting Memory Bank MCP Server in stdio mode...\n");
-    
+
     // Validate environment and initialize services
     await validateEnvironment();
-    
+
     // Create transport
     const transport = new StdioServerTransport();
-    
+
     console.error("Connecting server to transport...");
-    
+
     // Connect server to transport
     await server.connect(transport);
-    
+
     console.error("\n=== MCP Server Ready ===");
     console.error("Available tools:");
     console.error("  - memorybank_index_code: Indexar código semánticamente");
@@ -327,7 +327,7 @@ async function startStdioServer() {
     console.error("  - memorybank_analyze_coverage: Analizar cobertura de indexación");
     console.error("");
     console.error("Ready to accept requests...\n");
-    
+
   } catch (error) {
     console.error("Error starting stdio server:", error);
     console.error("Stack trace:", (error as Error).stack);

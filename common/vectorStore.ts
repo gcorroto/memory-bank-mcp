@@ -20,6 +20,7 @@ export interface ChunkRecord {
   fileHash: string;        // Hash of the source file
   timestamp: number;       // Timestamp of indexing
   context?: string;        // Additional context (imports, etc.)
+  projectId: string;       // Project identifier (hash of projectRoot)
 }
 
 export interface SearchResult {
@@ -166,9 +167,9 @@ export class VectorStore {
   }
 
   /**
-   * Deletes all chunks from a specific file
+   * Deletes all chunks from a specific file in a specific project
    */
-  async deleteChunksByFile(filePath: string): Promise<void> {
+  async deleteChunksByFile(filePath: string, projectId: string): Promise<void> {
     await this.ensureInitialized();
 
     if (!this.table) {
@@ -176,8 +177,8 @@ export class VectorStore {
     }
 
     try {
-      await this.table.delete(`"filePath" = '${filePath}'`);
-      console.error(`Deleted all chunks from file: ${filePath}`);
+      await this.table.delete(`"filePath" = '${filePath}' AND "projectId" = '${projectId}'`);
+      console.error(`Deleted all chunks from file: ${filePath} (project: ${projectId.substring(0, 8)}...)`);
     } catch (error) {
       console.error(`Error deleting chunks by file: ${error}`);
       throw error;
@@ -242,6 +243,7 @@ export class VectorStore {
             fileHash: result.fileHash,
             timestamp: result.timestamp,
             context: result.context,
+            projectId: result.projectId,
           },
           score,
           distance,
@@ -284,6 +286,7 @@ export class VectorStore {
         fileHash: r.fileHash,
         timestamp: r.timestamp,
         context: r.context,
+        projectId: r.projectId,
       }));
     } catch (error) {
       console.error(`Error getting chunks by file: ${error}`);

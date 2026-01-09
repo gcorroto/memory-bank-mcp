@@ -10,6 +10,7 @@ import { chunkCode, CodeChunk } from "./chunker.js";
 import { EmbeddingService } from "./embeddingService.js";
 import { VectorStore, ChunkRecord } from "./vectorStore.js";
 import { logger } from "./logger.js";
+import * as crypto from "crypto";
 
 export interface IndexMetadata {
   version: string;
@@ -44,16 +45,28 @@ export class IndexManager {
   private vectorStore: VectorStore;
   private metadataPath: string;
   private metadata: IndexMetadata;
+  private projectRoot: string;
+  private projectId: string;
 
   constructor(
     embeddingService: EmbeddingService,
     vectorStore: VectorStore,
-    storagePath: string = ".memorybank"
+    storagePath: string = ".memorybank",
+    projectRoot?: string
   ) {
     this.embeddingService = embeddingService;
     this.vectorStore = vectorStore;
     this.metadataPath = path.join(storagePath, "index-metadata.json");
+    this.projectRoot = projectRoot || process.cwd();
+    this.projectId = this.generateProjectId(this.projectRoot);
     this.metadata = this.loadMetadata();
+  }
+
+  /**
+   * Generates a unique project ID from the project root path
+   */
+  private generateProjectId(projectRoot: string): string {
+    return crypto.createHash("sha256").update(projectRoot).digest("hex").substring(0, 16);
   }
 
   /**
@@ -187,10 +200,11 @@ export class IndexManager {
         fileHash: file.hash,
         timestamp,
         context: chunk.context,
+        projectId: this.projectId,
       }));
 
       // Delete old chunks for this file
-      await this.vectorStore.deleteChunksByFile(file.path);
+      await this.vectorStore.deleteChunksByFile(file.path, this.projectId);
 
       // Insert new chunks
       await this.vectorStore.insertChunks(chunkRecords);
@@ -472,7 +486,7 @@ export class IndexManager {
    */
   async removeFile(filePath: string): Promise<void> {
     await this.vectorStore.initialize();
-    await this.vectorStore.deleteChunksByFile(filePath);
+    await this.vectorStore.deleteChunksByFile(filePath, this.projectId);
 
     delete this.metadata.files[filePath];
     this.saveMetadata();
@@ -486,8 +500,9 @@ export class IndexManager {
  */
 export function createIndexManager(
   embeddingService: EmbeddingService,
-  vectorStore: VectorStore
+  vectorStore: VectorStore,
+  workspaceRoot?: string
 ): IndexManager {
   const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
-  return new IndexManager(embeddingService, vectorStore, storagePath);
+  return new IndexManager(embeddingService, vectorStore, storagePath, workspaceRoot);
 }
