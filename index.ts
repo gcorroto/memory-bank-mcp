@@ -44,8 +44,11 @@ const server = new McpServer({
 // Tool: Index Code
 server.tool(
   "memorybank_index_code",
-  "Indexa semánticamente código de un directorio o archivo específico para permitir búsquedas semánticas",
+  "Indexa semánticamente código de un directorio o archivo específico para permitir búsquedas semánticas. El projectId es OBLIGATORIO y debe coincidir con el definido en AGENTS.md",
   {
+    projectId: z
+      .string()
+      .describe("Identificador único del proyecto (OBLIGATORIO). Debe coincidir con el definido en AGENTS.md del proyecto"),
     path: z
       .string()
       .optional()
@@ -64,6 +67,7 @@ server.tool(
   async (args) => {
     const result = await indexCode(
       {
+        projectId: args.projectId,
         path: args.path,
         recursive: args.recursive,
         forceReindex: args.forceReindex,
@@ -81,8 +85,11 @@ server.tool(
 // Tool: Search Memory Bank
 server.tool(
   "memorybank_search",
-  "Busca código relevante mediante búsqueda semántica vectorial. Usa esta herramienta SIEMPRE que necesites información sobre el código",
+  "Busca código relevante mediante búsqueda semántica vectorial. Usa esta herramienta SIEMPRE que necesites información sobre el código. El projectId es OBLIGATORIO",
   {
+    projectId: z
+      .string()
+      .describe("Identificador del proyecto donde buscar (OBLIGATORIO). Debe coincidir con el usado al indexar"),
     query: z
       .string()
       .describe("Consulta semántica: describe qué estás buscando en lenguaje natural (ej: 'función de autenticación', '¿cómo se validan los emails?')"),
@@ -108,6 +115,7 @@ server.tool(
   async (args) => {
     const result = await searchMemory(
       {
+        projectId: args.projectId,
         query: args.query,
         topK: args.topK,
         minScore: args.minScore,
@@ -159,8 +167,11 @@ server.tool(
 // Tool: Write File
 server.tool(
   "memorybank_write_file",
-  "Escribe o modifica un archivo y automáticamente lo reindexa en el Memory Bank para mantener la consistencia",
+  "Escribe o modifica un archivo y automáticamente lo reindexa en el Memory Bank para mantener la consistencia. El projectId es OBLIGATORIO para la reindexación correcta",
   {
+    projectId: z
+      .string()
+      .describe("Identificador del proyecto (OBLIGATORIO). Necesario para la auto-reindexación correcta"),
     path: z
       .string()
       .describe("Ruta relativa o absoluta del archivo a escribir"),
@@ -176,6 +187,7 @@ server.tool(
   async (args) => {
     const result = await writeFile(
       {
+        projectId: args.projectId,
         path: args.path,
         content: args.content,
         autoReindex: args.autoReindex,
@@ -207,11 +219,20 @@ server.tool(
 // Tool: Analyze Coverage
 server.tool(
   "memorybank_analyze_coverage",
-  "Analiza la cobertura de indexación del proyecto. Muestra qué carpetas/archivos están indexados, cuáles no, y cuáles tienen cambios pendientes. Perfecto para visualizar el estado del conocimiento del agente sobre el proyecto. NOTA: Puede tardar en workspaces grandes",
-  {},
-  async () => {
+  "Analiza la cobertura de indexación del proyecto. Muestra qué carpetas/archivos están indexados, cuáles no, y cuáles tienen cambios pendientes. El projectId es OBLIGATORIO. NOTA: Puede tardar en workspaces grandes",
+  {
+    projectId: z
+      .string()
+      .describe("Identificador del proyecto a analizar (OBLIGATORIO)"),
+    path: z
+      .string()
+      .optional()
+      .describe("Ruta específica a analizar (por defecto: raíz del workspace)"),
+  },
+  async (args) => {
     try {
-      const result = await analyzeCoverage(indexManager, vectorStore, workspaceRoot);
+      const targetPath = args.path || workspaceRoot;
+      const result = await analyzeCoverage(indexManager, vectorStore, targetPath, args.projectId);
       
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -255,12 +276,11 @@ server.tool(
 // Tool: Generate Project Docs
 server.tool(
   generateProjectDocsToolDefinition.name,
-  generateProjectDocsToolDefinition.description,
+  generateProjectDocsToolDefinition.description + ". El projectId es OBLIGATORIO",
   {
     projectId: z
       .string()
-      .optional()
-      .describe("ID del proyecto (opcional, usa 'default' si no se especifica)"),
+      .describe("Identificador del proyecto (OBLIGATORIO). Debe coincidir con el usado al indexar"),
     force: z
       .boolean()
       .optional()
@@ -286,8 +306,11 @@ server.tool(
 // Tool: Get Project Docs
 server.tool(
   getProjectDocsToolDefinition.name,
-  getProjectDocsToolDefinition.description,
+  getProjectDocsToolDefinition.description + ". El projectId es OBLIGATORIO",
   {
+    projectId: z
+      .string()
+      .describe("Identificador del proyecto (OBLIGATORIO). Debe coincidir con el usado al generar los docs"),
     document: z
       .string()
       .optional()
@@ -302,6 +325,7 @@ server.tool(
   async (args) => {
     const result = await getProjectDocs(
       {
+        projectId: args.projectId,
         document: args.document,
         format: args.format,
       },

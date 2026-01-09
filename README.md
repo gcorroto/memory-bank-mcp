@@ -153,18 +153,25 @@ Edita tu archivo de configuración de Claude Desktop:
 
 ## 📚 Herramientas Disponibles
 
+> **⚠️ IMPORTANTE**: Todas las herramientas requieren `projectId` obligatorio. Este ID debe coincidir con el definido en tu archivo `AGENTS.md`.
+
 ### `memorybank_index_code`
 
 Indexa código semánticamente para permitir búsquedas.
 
 **Parámetros:**
+- `projectId` **(REQUERIDO)**: Identificador único del proyecto
 - `path` (opcional): Ruta relativa o absoluta (default: raíz del workspace)
 - `recursive` (opcional): Indexar subdirectorios (default: true)
 - `forceReindex` (opcional): Forzar reindexación completa (default: false)
 
 **Ejemplo:**
-```
-memorybank_index_code({ path: "src/auth", recursive: true })
+```json
+{
+  "projectId": "my-project",
+  "path": "src/auth",
+  "recursive": true
+}
 ```
 
 ### `memorybank_search`
@@ -172,6 +179,7 @@ memorybank_index_code({ path: "src/auth", recursive: true })
 Busca código por similitud semántica.
 
 **Parámetros:**
+- `projectId` **(REQUERIDO)**: Identificador del proyecto donde buscar
 - `query` (requerido): Consulta en lenguaje natural
 - `topK` (opcional): Número de resultados (default: 10)
 - `minScore` (opcional): Score mínimo 0-1 (default: 0.4)
@@ -179,12 +187,13 @@ Busca código por similitud semántica.
 - `filterByLanguage` (opcional): Filtrar por lenguaje
 
 **Ejemplo:**
-```
-memorybank_search({ 
-  query: "función que autentica usuarios con JWT",
-  topK: 5,
-  minScore: 0.8
-})
+```json
+{
+  "projectId": "my-project",
+  "query": "función que autentica usuarios con JWT",
+  "topK": 5,
+  "minScore": 0.8
+}
 ```
 
 ### `memorybank_read_file`
@@ -206,16 +215,18 @@ memorybank_read_file({ path: "src/auth/service.ts", startLine: 50, endLine: 100 
 Escribe un archivo y lo reindexa automáticamente.
 
 **Parámetros:**
+- `projectId` **(REQUERIDO)**: Identificador del proyecto para reindexación
 - `path` (requerido): Ruta del archivo
 - `content` (requerido): Contenido del archivo
 - `autoReindex` (opcional): Auto-reindexar (default: true)
 
 **Ejemplo:**
-```
-memorybank_write_file({
-  path: "src/utils/validator.ts",
-  content: "export function validateEmail(email: string) { ... }"
-})
+```json
+{
+  "projectId": "my-project",
+  "path": "src/utils/validator.ts",
+  "content": "export function validateEmail(email: string) { ... }"
+}
 ```
 
 ### `memorybank_get_stats`
@@ -231,9 +242,15 @@ memorybank_get_stats({})
 
 Analiza la cobertura de indexación del proyecto.
 
+**Parámetros:**
+- `projectId` **(REQUERIDO)**: Identificador del proyecto a analizar
+- `path` (opcional): Ruta específica a analizar
+
 **Ejemplo:**
-```
-memorybank_analyze_coverage({})
+```json
+{
+  "projectId": "my-project"
+}
 ```
 
 ### `memorybank_generate_project_docs` 🆕
@@ -241,12 +258,15 @@ memorybank_analyze_coverage({})
 Genera documentación estructurada del proyecto usando IA con razonamiento (gpt-5-mini).
 
 **Parámetros:**
-- `projectId` (opcional): ID del proyecto
+- `projectId` **(REQUERIDO)**: Identificador del proyecto
 - `force` (opcional): Forzar regeneración (default: false)
 
 **Ejemplo:**
-```
-memorybank_generate_project_docs({ force: true })
+```json
+{
+  "projectId": "my-project",
+  "force": true
+}
 ```
 
 Genera 6 documentos markdown:
@@ -262,16 +282,119 @@ Genera 6 documentos markdown:
 Lee la documentación del proyecto generada por IA.
 
 **Parámetros:**
+- `projectId` **(REQUERIDO)**: Identificador del proyecto
 - `document` (opcional): Documento específico o "all"/"summary" (default: "summary")
 - `format` (opcional): "full" o "summary" (default: "full")
 
 **Ejemplo:**
-```
+```json
 // Obtener resumen de todos los docs
-memorybank_get_project_docs({ document: "summary" })
+{
+  "projectId": "my-project",
+  "document": "summary"
+}
 
 // Obtener documento específico
-memorybank_get_project_docs({ document: "systemPatterns" })
+{
+  "projectId": "my-project",
+  "document": "systemPatterns"
+}
+```
+
+## 📋 Plantillas de Instrucciones para Agentes
+
+Memory Bank incluye plantillas de instrucciones en dos formatos:
+- **AGENTS.md** - Estándar [agents.md](https://agents.md/) (compatible con múltiples agentes)
+- **VSCode/Copilot** - Formato `.github/copilot-instructions.md` para VS Code
+
+### Instalación - Formato AGENTS.md
+
+Copia la plantilla que prefieras a la raíz de tu proyecto:
+
+```bash
+# Elegir una plantilla
+cp node_modules/@grec0/memory-bank-mcp/templates/AGENTS.basic.md ./AGENTS.md
+
+# Editar los placeholders
+# Reemplaza {{PROJECT_ID}} con tu ID de proyecto
+# Reemplaza {{WORKSPACE_PATH}} con la ruta del workspace
+```
+
+### Instalación - Formato VS Code
+
+Para VS Code con GitHub Copilot, usa el formato `copilot-instructions.md`:
+
+```bash
+# Crear carpeta .github si no existe
+mkdir -p .github
+
+# Elegir una plantilla
+cp node_modules/@grec0/memory-bank-mcp/templates/vscode/copilot-instructions.basic.md ./.github/copilot-instructions.md
+
+# Habilitar en VS Code settings.json:
+# "github.copilot.chat.codeGeneration.useInstructionFiles": true
+```
+
+También puedes usar el archivo `.instructions.md` con aplicación condicional:
+
+```bash
+# Crear carpeta de instrucciones
+mkdir -p .github/instructions
+
+# Copiar instrucciones base
+cp node_modules/@grec0/memory-bank-mcp/templates/vscode/memory-bank.instructions.md ./.github/instructions/
+```
+
+### 1. Basic Mode (`AGENTS.basic.md`)
+
+**Para proyectos donde quieres control total.**
+
+- ✅ El agente SIEMPRE consulta el Memory Bank antes de actuar
+- ✅ Solo indexa cuando el usuario lo solicita explícitamente
+- ✅ Pide permiso antes de modificar código
+- ✅ Sugiere reindexar después de cambios
+
+**Ideal para**: Proyectos críticos, revisión de código, onboarding.
+
+### 2. Auto-Index Mode (`AGENTS.auto-index.md`)
+
+**Para desarrollo activo con sincronización automática.**
+
+- ✅ El agente consulta el Memory Bank automáticamente
+- ✅ Reindexa CADA archivo después de modificarlo
+- ✅ Mantiene el Memory Bank siempre actualizado
+- ✅ Puede leer/escribir archivos directamente
+
+**Ideal para**: Desarrollo activo, iteración rápida, equipos.
+
+### 3. Sandboxed Mode (`AGENTS.sandboxed.md`)
+
+**Para entornos sin acceso directo al sistema de archivos.**
+
+- ✅ NO tiene acceso directo a archivos
+- ✅ DEBE usar `memorybank_read_file` para leer
+- ✅ DEBE usar `memorybank_write_file` para escribir
+- ✅ Auto-reindexa automáticamente en cada escritura
+
+**Ideal para**: Entornos restringidos, desarrollo remoto, seguridad.
+
+### Ejemplo de `AGENTS.md` Configurado
+
+```markdown
+# AGENTS.md
+
+## Project Configuration
+- **Project ID**: `my-awesome-app`
+- **Workspace**: `/home/user/projects/my-awesome-app`
+
+## Memory Bank Instructions
+
+### CRITICAL: Always Consult Before Acting
+Before any action, call `memorybank_search` with projectId="my-awesome-app"
+
+### Auto-Indexing Policy
+AFTER every file modification:
+memorybank_index_code({ projectId: "my-awesome-app", path: "<modified_file>" })
 ```
 
 ## 🎯 Casos de Uso
@@ -279,13 +402,13 @@ memorybank_get_project_docs({ document: "systemPatterns" })
 ### 1. Primera Indexación
 
 ```
-Usuario: Hola, quiero que me ayudes con mi proyecto
+Usuario: Hola, quiero que me ayudes con mi proyecto. El projectId es "my-app"
 Claude: [ejecuta memorybank_get_stats]
         Veo que no hay código indexado aún. 
         ¿Deseas que indexe el proyecto para poder ayudarte mejor?
 
 Usuario: Sí
-Claude: [ejecuta memorybank_index_code({})]
+Claude: [ejecuta memorybank_index_code({ projectId: "my-app" })]
         He indexado 145 archivos (1,234 chunks) en 45 segundos.
         ¿En qué puedo ayudarte?
 ```
@@ -294,7 +417,7 @@ Claude: [ejecuta memorybank_index_code({})]
 
 ```
 Usuario: ¿Cómo funciona la autenticación en este proyecto?
-Claude: [ejecuta memorybank_search({ query: "autenticación login usuarios" })]
+Claude: [ejecuta memorybank_search({ projectId: "my-app", query: "autenticación login usuarios" })]
         
         La autenticación se implementa en src/auth/authService.ts (líneas 23-87):
         
@@ -308,11 +431,11 @@ Claude: [ejecuta memorybank_search({ query: "autenticación login usuarios" })]
 
 ```
 Usuario: Añade validación de email al formulario de registro
-Claude: [busca formulario de registro]
-        [busca validadores existentes]
+Claude: [busca formulario de registro con projectId]
+        [busca validadores existentes con projectId]
         [lee archivo actual]
         [genera código respetando estilo del proyecto]
-        [escribe archivo con memorybank_write_file]
+        [escribe archivo con memorybank_write_file({ projectId: "my-app", ... })]
         
         He añadido la validación de email en src/forms/RegisterForm.tsx línea 45.
         Usa el validador existente de emailValidator.ts para mantener consistencia.
@@ -440,15 +563,31 @@ El sistema maneja automáticamente rate limits con exponential backoff, pero si 
 
 ### Índice desactualizado
 
-```
+```json
 memorybank_get_stats({})
 ```
 
 Si `pendingFiles` muestra archivos pendientes:
 
+```json
+{
+  "projectId": "my-project",
+  "forceReindex": true
+}
 ```
-memorybank_index_code({ forceReindex: true })
+
+### Error: "projectId is required"
+
+**Solución**: Todas las herramientas requieren `projectId`. Asegúrate de incluirlo en cada llamada:
+
+```json
+{
+  "projectId": "my-project",
+  "query": "..."
+}
 ```
+
+Tip: Define el `projectId` en tu archivo `AGENTS.md` para que el agente lo use consistentemente.
 
 ## 🤝 Contribución
 
@@ -462,7 +601,16 @@ memorybank_index_code({ forceReindex: true })
 
 ## 📖 Documentación Adicional
 
-- [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md): Guía completa para agentes de IA
+- [templates/](templates/): Plantillas de instrucciones para agentes
+  - **Formato AGENTS.md** (estándar multi-agente):
+    - `AGENTS.basic.md`: Modo básico (indexación manual)
+    - `AGENTS.auto-index.md`: Modo auto-indexación
+    - `AGENTS.sandboxed.md`: Modo sin acceso directo a archivos
+  - **Formato VS Code** (`templates/vscode/`):
+    - `copilot-instructions.basic.md`: Modo básico para Copilot
+    - `copilot-instructions.auto-index.md`: Modo auto-indexación para Copilot
+    - `copilot-instructions.sandboxed.md`: Modo sandboxed para Copilot
+    - `memory-bank.instructions.md`: Instrucciones con aplicación condicional
 - [wiki/Developer-Guide.md](wiki/Developer-Guide.md): Guía para desarrolladores
 - [wiki/API-Reference.md](wiki/API-Reference.md): Referencia completa de API
 

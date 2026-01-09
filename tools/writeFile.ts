@@ -8,6 +8,7 @@ import * as path from "path";
 import { IndexManager } from "../common/indexManager.js";
 
 export interface WriteFileParams {
+  projectId: string;       // Project identifier (REQUIRED for auto-reindex)
   path: string;            // File path to write
   content: string;         // Content to write
   autoReindex?: boolean;   // Auto-reindex after write (default: true)
@@ -55,8 +56,8 @@ export async function writeFile(
     
     if (autoReindex) {
       try {
-        console.error(`Auto-reindexing ${params.path}...`);
-        const reindexResult = await indexManager.reindexFile(filePath, workspaceRoot);
+        console.error(`Auto-reindexing ${params.path} for project ${params.projectId}...`);
+        const reindexResult = await indexManager.reindexFile(filePath, workspaceRoot, params.projectId);
         
         if (reindexResult.success) {
           reindexed = true;

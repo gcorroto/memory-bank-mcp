@@ -7,6 +7,7 @@ import * as path from "path";
 import { IndexManager } from "../common/indexManager.js";
 
 export interface IndexCodeParams {
+  projectId: string;       // Project identifier (REQUIRED)
   path?: string;           // Path to index (default: workspace root)
   recursive?: boolean;     // Index recursively (default: true)
   forceReindex?: boolean;  // Force reindexing (default: false)
@@ -38,13 +39,16 @@ export async function indexCode(
       : workspaceRoot;
     
     console.error(`\nIndexing code at: ${targetPath}`);
+    console.error(`Project ID: ${params.projectId}`);
     console.error(`Workspace root: ${workspaceRoot}`);
     console.error(`Recursive: ${params.recursive !== false}`);
     console.error(`Force reindex: ${params.forceReindex || false}`);
     
-    // Run indexing
+    // Run indexing - pass workspaceRoot for consistent path normalization
     const result = await indexManager.indexFiles({
+      projectId: params.projectId,
       rootPath: targetPath,
+      workspaceRoot: workspaceRoot,  // Always normalize paths relative to workspace
       recursive: params.recursive !== false,
       forceReindex: params.forceReindex || false,
     });

@@ -11,6 +11,13 @@ import { EmbeddingService } from "./embeddingService.js";
 import { VectorStore, ChunkRecord } from "./vectorStore.js";
 import { ProjectKnowledgeService, GenerationResult } from "./projectKnowledgeService.js";
 
+/**
+ * Normalizes a path to use forward slashes for consistent cross-platform behavior
+ */
+function normalizePath(filePath: string): string {
+  return filePath.split(path.sep).join('/');
+}
+
 export interface IndexMetadata {
   version: string;
   lastIndexed: number;
@@ -30,7 +37,8 @@ export interface IndexStats {
 }
 
 export interface IndexOptions {
-  rootPath: string;
+  rootPath: string;               // Directory/file to index
+  workspaceRoot?: string;         // Workspace root for consistent path normalization
   forceReindex?: boolean;
   recursive?: boolean;
   projectId?: string;             // Project ID for multi-project support
@@ -95,9 +103,15 @@ export class IndexManager {
    */
   private loadMetadata(): IndexMetadata {
     try {
+      console.error(`Loading metadata from: ${this.metadataPath}`);
       if (fs.existsSync(this.metadataPath)) {
         const data = fs.readFileSync(this.metadataPath, "utf-8");
-        return JSON.parse(data);
+        const metadata = JSON.parse(data);
+        const fileCount = Object.keys(metadata.files || {}).length;
+        console.error(`Loaded metadata: ${fileCount} files tracked`);
+        return metadata;
+      } else {
+        console.error(`Metadata file not found: ${this.metadataPath}`);
       }
     } catch (error) {
       console.error(`Warning: Could not load index metadata: ${error}`);
@@ -120,7 +134,9 @@ export class IndexManager {
         fs.mkdirSync(dir, { recursive: true });
       }
       
+      const fileCount = Object.keys(this.metadata.files).length;
       fs.writeFileSync(this.metadataPath, JSON.stringify(this.metadata, null, 2));
+      console.error(`  Saved metadata: ${fileCount} files tracked → ${this.metadataPath}`);
     } catch (error) {
       console.error(`Warning: Could not save index metadata: ${error}`);
     }
@@ -134,12 +150,23 @@ export class IndexManager {
       return true;
     }
     
-    const fileInfo = this.metadata.files[file.path];
+    // Use normalized path for consistent lookup
+    const normalizedPath = normalizePath(file.path);
+    const fileInfo = this.metadata.files[normalizedPath];
+    
     if (!fileInfo) {
+      // Debug: show first few new files
+      const trackedCount = Object.keys(this.metadata.files).length;
+      if (trackedCount === 0) {
+        console.error(`  New file (no metadata): ${normalizedPath}`);
+      }
       return true; // New file
     }
     
     if (fileInfo.hash !== file.hash) {
+      console.error(`  Changed file: ${normalizedPath}`);
+      console.error(`    Stored hash: ${fileInfo.hash.substring(0, 16)}...`);
+      console.error(`    Current hash: ${file.hash.substring(0, 16)}...`);
       return true; // File changed
     }
     
@@ -202,11 +229,12 @@ export class IndexManager {
       // Prepare chunk records for storage (using snake_case for LanceDB)
       // Note: All fields must have non-undefined values for LanceDB Arrow conversion
       const timestamp = Date.now();
-      console.error(`  Storing chunks with project_id: '${projectId}'`);
+      const normalizedFilePath = normalizePath(file.path);
+      console.error(`  Storing chunks with project_id: '${projectId}', file: '${normalizedFilePath}'`);
       const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
         id: chunk.id,
         vector: embeddings[i].vector,
-        file_path: chunk.filePath,
+        file_path: normalizedFilePath,    // Use normalized path for consistency
         content: chunk.content,
         start_line: chunk.startLine,
         end_line: chunk.endLine,
@@ -219,16 +247,16 @@ export class IndexManager {
         project_id: projectId,
       }));
       
-      // Delete old chunks for this file
-      await this.vectorStore.deleteChunksByFile(file.path);
+      // Delete old chunks for this file using normalized path
+      await this.vectorStore.deleteChunksByFile(normalizedFilePath);
       
       // Insert new chunks
       await this.vectorStore.insertChunks(chunkRecords);
       
       console.error(`  Stored ${chunkRecords.length} chunks in vector store`);
       
-      // Update metadata
-      this.metadata.files[file.path] = {
+      // Update metadata with normalized path for consistent lookups
+      this.metadata.files[normalizedFilePath] = {
         hash: file.hash,
         lastIndexed: timestamp,
         chunkCount: chunks.length,
@@ -274,8 +302,12 @@ export class IndexManager {
       ? options.autoUpdateDocs 
       : this.autoUpdateDocs;
     
+    // Use workspaceRoot for consistent path normalization, fallback to rootPath
+    const workspaceRoot = options.workspaceRoot || options.rootPath;
+    
     console.error(`\n=== Starting indexing process ===`);
     console.error(`Root path: ${options.rootPath}`);
+    console.error(`Workspace root: ${workspaceRoot}`);
     console.error(`Project ID: ${projectId}`);
     console.error(`Force reindex: ${options.forceReindex || false}`);
     console.error(`Auto-update docs: ${shouldAutoUpdateDocs}`);
@@ -283,12 +315,28 @@ export class IndexManager {
     // Initialize vector store
     await this.vectorStore.initialize();
     
-    // Scan files
+    // Scan files - always use workspaceRoot for consistent relative paths
     console.error(`\nScanning files...`);
     const files = scanFiles({
       rootPath: options.rootPath,
       recursive: options.recursive !== undefined ? options.recursive : true,
     });
+    
+    // Normalize paths to be relative to workspaceRoot, not rootPath
+    // This ensures consistent paths in metadata regardless of which subfolder was indexed
+    if (workspaceRoot !== options.rootPath) {
+      const rootPathResolved = path.resolve(options.rootPath);
+      const workspaceRootResolved = path.resolve(workspaceRoot);
+      
+      for (const file of files) {
+        // Convert path from relative-to-rootPath to relative-to-workspaceRoot
+        const absolutePath = path.join(rootPathResolved, file.path);
+        file.path = path.relative(workspaceRootResolved, absolutePath);
+        // Use forward slashes for consistency
+        file.path = file.path.split(path.sep).join('/');
+      }
+      console.error(`  Normalized ${files.length} file paths to workspace root`);
+    }
     
     if (files.length === 0) {
       console.error("No files found to index");
@@ -468,6 +516,7 @@ export class IndexManager {
   async search(
     query: string,
     options: {
+      projectId?: string;       // Filter by project ID
       topK?: number;
       minScore?: number;
       filterByFile?: string;
@@ -490,6 +539,7 @@ export class IndexManager {
     
     // Search vector store
     const results = await this.vectorStore.search(queryVector, {
+      filterByProject: options.projectId,
       topK: options.topK || 10,
       minScore: options.minScore || 0.0,
       filterByFile: options.filterByFile,

@@ -313,11 +313,15 @@ function generateRecommendations(
 export async function analyzeCoverage(
   indexManager: IndexManager,
   vectorStore: VectorStore,
-  workspaceRoot: string
+  workspaceRoot: string,
+  projectId?: string
 ): Promise<AnalyzeCoverageResult> {
   try {
     console.error("\n=== Analizando cobertura de indexación ===");
     console.error(`Workspace root: ${workspaceRoot}`);
+    if (projectId) {
+      console.error(`Project ID: ${projectId}`);
+    }
     
     // 1. Scan all code files in workspace with timeout protection
     console.error("Escaneando archivos del workspace...");

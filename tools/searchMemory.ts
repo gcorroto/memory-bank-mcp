@@ -6,6 +6,7 @@
 import { IndexManager } from "../common/indexManager.js";
 
 export interface SearchMemoryParams {
+  projectId: string;          // Project identifier (REQUIRED)
   query: string;              // Search query
   topK?: number;              // Number of results (default: 10)
   minScore?: number;          // Minimum similarity score (default: 0.4)
@@ -51,6 +52,7 @@ export async function searchMemory(
     }
     
     console.error(`\nSearching Memory Bank for: "${params.query}"`);
+    console.error(`Project ID: ${params.projectId}`);
     console.error(`Top K: ${params.topK || 10}`);
     console.error(`Min score: ${params.minScore || 0.4}`);
     
@@ -63,6 +65,7 @@ export async function searchMemory(
     
     // Search
     const results = await indexManager.search(params.query, {
+      projectId: params.projectId,
       topK: params.topK || 10,
       minScore: params.minScore !== undefined ? params.minScore : 0.4,
       filterByFile: params.filterByFile,

@@ -6,6 +6,7 @@
 import { ProjectKnowledgeService, ProjectDocType, ProjectDoc } from "../common/projectKnowledgeService.js";
 
 export interface GetProjectDocsParams {
+  projectId: string;      // Project identifier (REQUIRED)
   document?: string;      // Specific document to retrieve (or "all" / "summary")
   format?: "full" | "summary";  // Output format
 }
