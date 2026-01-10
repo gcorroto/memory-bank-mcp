@@ -438,9 +438,10 @@ ${chunk.content}
   }
   
   /**
-   * Generates a single document
+   * Generates a single document for a specific project
    */
   async generateDocument(
+    projectId: string,
     type: ProjectDocType,
     chunks: ChunkRecord[],
     force: boolean = false,
@@ -448,16 +449,18 @@ ${chunk.content}
   ): Promise<ProjectDoc | null> {
     const definition = DOC_DEFINITIONS[type];
     const inputHash = this.hashChunks(chunks);
+    const docsPath = this.ensureProjectDocsDirectory(projectId);
+    const metadataCache = this.loadProjectMetadata(projectId);
     
     // Check if regeneration is needed
-    const existingMetadata = this.metadataCache.get(type);
+    const existingMetadata = metadataCache.get(type);
     
     if (!force && existingMetadata && existingMetadata.lastInputHash === inputHash) {
       console.error(`Skipping ${type}: No changes detected`);
       return null;
     }
     
-    console.error(`Generating document: ${definition.title}`);
+    console.error(`Generating document: ${definition.title} (project: ${projectId})`);
     console.error(`  Input chunks: ${chunks.length}`);
     
     // Prepare prompt
@@ -489,12 +492,12 @@ ${chunk.content}
     };
     
     // Save document
-    const docPath = path.join(this.options.docsPath, definition.filename);
+    const docPath = path.join(docsPath, definition.filename);
     fs.writeFileSync(docPath, doc.content);
     
     // Update metadata
-    this.metadataCache.set(type, doc.metadata);
-    this.saveMetadata();
+    metadataCache.set(type, doc.metadata);
+    this.saveProjectMetadata(projectId);
     
     console.error(`Generated ${definition.title} (${result.reasoningTokens} reasoning + ${result.outputTokens} output tokens)`);
     
@@ -505,6 +508,7 @@ ${chunk.content}
    * Generates all project documents (in parallel for speed)
    */
   async generateAllDocuments(
+    projectId: string,
     chunks: ChunkRecord[],
     force: boolean = false
   ): Promise<GenerationResult> {
@@ -518,9 +522,12 @@ ${chunk.content}
       errors: [],
     };
     
+    const docsPath = this.ensureProjectDocsDirectory(projectId);
+    const metadataCache = this.loadProjectMetadata(projectId);
+    
     // Get previous progress if exists (read before parallel generation)
     let previousProgress: string | undefined;
-    const progressPath = path.join(this.options.docsPath, "progress.md");
+    const progressPath = path.join(docsPath, "progress.md");
     if (fs.existsSync(progressPath)) {
       previousProgress = fs.readFileSync(progressPath, "utf-8");
     }
@@ -540,7 +547,7 @@ ${chunk.content}
       "progress",
     ];
     
-    console.error(`\n🚀 Generating ${docTypes.length} documents in PARALLEL...`);
+    console.error(`\n🚀 Generating ${docTypes.length} documents in PARALLEL for project: ${projectId}...`);
     
     // Generate all documents in parallel
     const generationPromises = docTypes.map(async (docType) => {
@@ -548,10 +555,11 @@ ${chunk.content}
         // For activeContext, use only recent chunks
         const docChunks = docType === "activeContext" ? recentChunks : chunks;
         
-        const existingMetadata = this.metadataCache.get(docType);
+        const existingMetadata = metadataCache.get(docType);
         const isNew = !existingMetadata;
         
         const doc = await this.generateDocument(
+          projectId,
           docType,
           docChunks,
           force,
@@ -599,16 +607,20 @@ ${chunk.content}
    * Updates only documents affected by changes
    */
   async updateDocuments(
+    projectId: string,
     chunks: ChunkRecord[],
     changedFiles: string[]
   ): Promise<GenerationResult> {
-    console.error(`updateDocuments called with ${chunks.length} chunks and ${changedFiles.length} changed files`);
+    console.error(`updateDocuments called for project ${projectId} with ${chunks.length} chunks and ${changedFiles.length} changed files`);
     
     // Debug: show first chunk if exists
     if (chunks.length > 0) {
       const firstChunk = chunks[0];
       console.error(`First chunk: ${firstChunk.file_path}, content length: ${firstChunk.content?.length || 0}`);
     }
+    
+    const docsPath = this.ensureProjectDocsDirectory(projectId);
+    const metadataCache = this.loadProjectMetadata(projectId);
     
     // Determine which documents need updating based on changed files
     const docsToUpdate: ProjectDocType[] = [];
@@ -646,7 +658,7 @@ ${chunk.content}
     
     // Get previous progress (read before parallel generation)
     let previousProgress: string | undefined;
-    const progressPath = path.join(this.options.docsPath, "progress.md");
+    const progressPath = path.join(docsPath, "progress.md");
     if (fs.existsSync(progressPath)) {
       previousProgress = fs.readFileSync(progressPath, "utf-8");
     }
@@ -656,17 +668,18 @@ ${chunk.content}
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, Math.min(30, chunks.length));
     
-    console.error(`\n🚀 Updating ${docsToUpdate.length} documents in PARALLEL...`);
+    console.error(`\n🚀 Updating ${docsToUpdate.length} documents in PARALLEL for project: ${projectId}...`);
     
     // Generate docs in parallel
     const updatePromises = docsToUpdate.map(async (docType) => {
       try {
         const docChunks = docType === "activeContext" ? recentChunks : chunks;
         
-        const existingMetadata = this.metadataCache.get(docType);
+        const existingMetadata = metadataCache.get(docType);
         const isNew = !existingMetadata;
         
         const doc = await this.generateDocument(
+          projectId,
           docType,
           docChunks,
           true, // Force update for changed docs
@@ -721,18 +734,20 @@ ${chunk.content}
   }
   
   /**
-   * Reads a project document
+   * Reads a project document for a specific project
    */
-  getDocument(type: ProjectDocType): ProjectDoc | null {
+  getDocument(projectId: string, type: ProjectDocType): ProjectDoc | null {
     const definition = DOC_DEFINITIONS[type];
-    const docPath = path.join(this.options.docsPath, definition.filename);
+    const docsPath = this.getProjectDocsPath(projectId);
+    const docPath = path.join(docsPath, definition.filename);
     
     if (!fs.existsSync(docPath)) {
       return null;
     }
     
     const content = fs.readFileSync(docPath, "utf-8");
-    const metadata = this.metadataCache.get(type);
+    const metadataCache = this.loadProjectMetadata(projectId);
+    const metadata = metadataCache.get(type);
     
     return {
       type,
@@ -748,13 +763,13 @@ ${chunk.content}
   }
   
   /**
-   * Reads all project documents
+   * Reads all project documents for a specific project
    */
-  getAllDocuments(): ProjectDoc[] {
+  getAllDocuments(projectId: string): ProjectDoc[] {
     const docs: ProjectDoc[] = [];
     
     for (const type of Object.keys(DOC_DEFINITIONS) as ProjectDocType[]) {
-      const doc = this.getDocument(type);
+      const doc = this.getDocument(projectId, type);
       if (doc) {
         docs.push(doc);
       }
@@ -766,8 +781,8 @@ ${chunk.content}
   /**
    * Gets a summary of all documents (useful for context loading)
    */
-  getDocumentsSummary(): string {
-    const docs = this.getAllDocuments();
+  getDocumentsSummary(projectId: string): string {
+    const docs = this.getAllDocuments(projectId);
     
     if (docs.length === 0) {
       return "No project documentation has been generated yet. Use memorybank_generate_project_docs to generate documentation.";
@@ -794,22 +809,24 @@ ${chunk.content}
   }
   
   /**
-   * Checks if documents exist
+   * Checks if documents exist for a project
    */
-  hasDocuments(): boolean {
-    return this.metadataCache.size > 0;
+  hasDocuments(projectId: string): boolean {
+    const metadataCache = this.loadProjectMetadata(projectId);
+    return metadataCache.size > 0;
   }
   
   /**
-   * Gets statistics about generated documents
+   * Gets statistics about generated documents for a project
    */
-  getStats(): {
+  getStats(projectId: string): {
     documentCount: number;
     totalReasoningTokens: number;
     totalOutputTokens: number;
     lastGenerated?: Date;
     documents: Record<ProjectDocType, { exists: boolean; lastGenerated?: Date }>;
   } {
+    const metadataCache = this.loadProjectMetadata(projectId);
     let totalReasoningTokens = 0;
     let totalOutputTokens = 0;
     let lastGenerated = 0;
@@ -817,7 +834,7 @@ ${chunk.content}
     const documents: Record<string, { exists: boolean; lastGenerated?: Date }> = {};
     
     for (const type of Object.keys(DOC_DEFINITIONS) as ProjectDocType[]) {
-      const metadata = this.metadataCache.get(type);
+      const metadata = metadataCache.get(type);
       
       documents[type] = {
         exists: !!metadata,
@@ -835,7 +852,7 @@ ${chunk.content}
     }
     
     return {
-      documentCount: this.metadataCache.size,
+      documentCount: metadataCache.size,
       totalReasoningTokens,
       totalOutputTokens,
       lastGenerated: lastGenerated > 0 ? new Date(lastGenerated) : undefined,
@@ -846,14 +863,6 @@ ${chunk.content}
   // ==========================================
   // Project-specific document methods (for MCP Resources)
   // ==========================================
-  
-  /**
-   * Gets the docs path for a specific project
-   */
-  getProjectDocsPath(projectId: string): string {
-    const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
-    return path.join(storagePath, "projects", projectId, "docs");
-  }
   
   /**
    * Checks if a project's Memory Bank is initialized
@@ -950,7 +959,7 @@ export function createProjectKnowledgeService(): ProjectKnowledgeService {
   const options: ProjectKnowledgeOptions = {
     model: process.env.MEMORYBANK_REASONING_MODEL || "gpt-5-mini",
     reasoningEffort: (process.env.MEMORYBANK_REASONING_EFFORT as "low" | "medium" | "high") || "medium",
-    docsPath: path.join(storagePath, "project-docs"),
+    storagePath: storagePath,
     enableSummary: true,
   };
   

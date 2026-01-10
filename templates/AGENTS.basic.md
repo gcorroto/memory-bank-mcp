@@ -26,13 +26,13 @@ This project uses Memory Bank MCP for semantic code understanding. You MUST foll
 #### Project Knowledge Layer (AI Documentation)
 | Tool | Description |
 |------|-------------|
-| `memorybank_generate_project_docs` | Generate AI documentation |
+| `memorybank_generate_project_docs` | Generate AI docs (replaces basic templates with rich content) |
 | `memorybank_get_project_docs` | Read project documentation |
 
 #### Context Management (Session Tracking)
 | Tool | Description |
 |------|-------------|
-| `memorybank_initialize` | Initialize Memory Bank for a new project |
+| `memorybank_initialize` | Create basic templates for new project (no AI, instant) |
 | `memorybank_update_context` | Update active context with session info |
 | `memorybank_record_decision` | Record technical decisions |
 | `memorybank_track_progress` | Update progress tracking |
@@ -87,7 +87,7 @@ Before answering ANY question or making ANY code change, you MUST:
 
 If this is the first time working with this project, initialize the Memory Bank:
 ```json
-// memorybank_initialize - Run once per project
+// memorybank_initialize - Creates basic templates (no AI, instant)
 {
   "projectId": "{{PROJECT_ID}}",
   "projectPath": "{{WORKSPACE_PATH}}",
@@ -95,7 +95,9 @@ If this is the first time working with this project, initialize the Memory Bank:
 }
 ```
 
-This creates the context tracking documents. Skip if already initialized.
+This creates basic template documents. Skip if already initialized.
+
+> **Tip**: After indexing code, run `memorybank_generate_project_docs` to replace templates with AI-generated documentation.
 
 ### Indexing Policy
 

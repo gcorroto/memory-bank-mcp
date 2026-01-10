@@ -41,14 +41,15 @@ export async function getProjectDocs(
   projectKnowledgeService: ProjectKnowledgeService
 ): Promise<GetProjectDocsResult> {
   try {
+    const projectId = params.projectId;
     const format = params.format || "full";
     const requestedDoc = params.document?.toLowerCase();
     
-    // Check if any documents exist
-    if (!projectKnowledgeService.hasDocuments()) {
+    // Check if any documents exist for this project
+    if (!projectKnowledgeService.hasDocuments(projectId)) {
       return {
         success: false,
-        message: "No project documentation has been generated yet. Run memorybank_generate_project_docs first.",
+        message: `No project documentation has been generated for project "${projectId}" yet. Run memorybank_generate_project_docs first.`,
         stats: {
           documentCount: 0,
           totalReasoningTokens: 0,
@@ -57,8 +58,8 @@ export async function getProjectDocs(
       };
     }
     
-    // Get stats
-    const stats = projectKnowledgeService.getStats();
+    // Get stats for this project
+    const stats = projectKnowledgeService.getStats(projectId);
     const statsResult = {
       documentCount: stats.documentCount,
       totalReasoningTokens: stats.totalReasoningTokens,
@@ -68,11 +69,11 @@ export async function getProjectDocs(
     
     // Handle summary request
     if (requestedDoc === "summary" || format === "summary") {
-      const summary = projectKnowledgeService.getDocumentsSummary();
+      const summary = projectKnowledgeService.getDocumentsSummary(projectId);
       
       return {
         success: true,
-        message: `Retrieved summary of ${stats.documentCount} project documents.`,
+        message: `Retrieved summary of ${stats.documentCount} project documents for "${projectId}".`,
         summary,
         stats: statsResult,
       };
@@ -80,11 +81,11 @@ export async function getProjectDocs(
     
     // Handle "all" or no specific document
     if (!requestedDoc || requestedDoc === "all") {
-      const documents = projectKnowledgeService.getAllDocuments();
+      const documents = projectKnowledgeService.getAllDocuments(projectId);
       
       return {
         success: true,
-        message: `Retrieved ${documents.length} project documents.`,
+        message: `Retrieved ${documents.length} project documents for "${projectId}".`,
         documents,
         stats: statsResult,
       };
@@ -104,19 +105,19 @@ export async function getProjectDocs(
       };
     }
     
-    const document = projectKnowledgeService.getDocument(normalizedDoc);
+    const document = projectKnowledgeService.getDocument(projectId, normalizedDoc);
     
     if (!document) {
       return {
         success: false,
-        message: `Document "${normalizedDoc}" has not been generated yet.`,
+        message: `Document "${normalizedDoc}" has not been generated yet for project "${projectId}".`,
         stats: statsResult,
       };
     }
     
     return {
       success: true,
-      message: `Retrieved document: ${normalizedDoc}`,
+      message: `Retrieved document: ${normalizedDoc} for project "${projectId}"`,
       documents: [document],
       stats: statsResult,
     };

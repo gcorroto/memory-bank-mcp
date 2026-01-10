@@ -62,8 +62,10 @@ export async function generateProjectDocs(
     
     console.error(`Found ${chunks.length} code chunks to analyze`);
     
-    // Generate documents
+    // Generate documents - projectId is required
+    const projectId = params.projectId || "default";
     const result = await projectKnowledgeService.generateAllDocuments(
+      projectId,
       chunks,
       params.force || false
     );

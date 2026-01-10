@@ -62,13 +62,13 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 #### Project Knowledge Layer (AI Documentation)
 | Tool | Description |
 |------|-------------|
-| `memorybank_generate_project_docs` | Generate AI documentation from code |
+| `memorybank_generate_project_docs` | Generate AI docs (replaces basic templates with rich content) |
 | `memorybank_get_project_docs` | Read project documentation |
 
 #### Context Management (Session Tracking)
 | Tool | Description |
 |------|-------------|
-| `memorybank_initialize` | Initialize Memory Bank for new project |
+| `memorybank_initialize` | Create basic templates for new project (no AI, instant) |
 | `memorybank_update_context` | Update session context |
 | `memorybank_record_decision` | Record technical decisions |
 | `memorybank_track_progress` | Track tasks and progress |
@@ -119,13 +119,14 @@ At the beginning of each session:
 
 1. **Initialize if first time** (only once per project):
    ```json
-   // memorybank_initialize
+   // memorybank_initialize - Creates basic templates (no AI, instant)
    {
      "projectId": "{{PROJECT_ID}}",
      "projectPath": "{{WORKSPACE_PATH}}",
      "projectName": "Project Name"
    }
    ```
+   > **Note**: After indexing code, run `memorybank_generate_project_docs` to replace basic templates with AI-generated documentation.
 
 2. **Get active context**:
    ```json

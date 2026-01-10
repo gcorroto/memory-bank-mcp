@@ -43,13 +43,13 @@ You MUST use Memory Bank tools for ALL operations:
 #### Project Knowledge Layer (AI Documentation)
 | Tool | Description |
 |------|-------------|
-| `memorybank_generate_project_docs` | Generate AI documentation |
+| `memorybank_generate_project_docs` | Generate AI docs (replaces templates) |
 | `memorybank_get_project_docs` | Read project documentation |
 
 #### Context Management (Session Tracking)
 | Tool | Description |
 |------|-------------|
-| `memorybank_initialize` | Initialize Memory Bank for a new project |
+| `memorybank_initialize` | Create basic templates (no AI, instant) |
 | `memorybank_update_context` | Update active context with session info |
 | `memorybank_record_decision` | Record technical decisions |
 | `memorybank_track_progress` | Update progress tracking |
@@ -108,13 +108,14 @@ At the beginning of each session:
 
 1. **Initialize if first time** (only once per project):
 ```json
-// memorybank_initialize - Run if Memory Bank doesn't exist
+// memorybank_initialize - Creates basic templates (no AI, instant)
 {
   "projectId": "{{PROJECT_ID}}",
   "projectPath": "{{WORKSPACE_PATH}}",
   "projectName": "Project Name"
 }
 ```
+> After indexing, run `memorybank_generate_project_docs` to replace with AI docs.
 
 2. **Get current project status**:
 ```json

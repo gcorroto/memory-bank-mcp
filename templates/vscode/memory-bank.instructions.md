@@ -29,14 +29,14 @@ This workspace uses [Memory Bank MCP](https://github.com/gcorroto/memory-bank-mc
 
 | Tool | Description |
 |------|-------------|
-| `memorybank_generate_project_docs` | Generate AI documentation |
+| `memorybank_generate_project_docs` | Generate AI docs (replaces templates) |
 | `memorybank_get_project_docs` | Read project documentation |
 
 ### Context Management (Session Tracking)
 
 | Tool | Description |
 |------|-------------|
-| `memorybank_initialize` | Initialize Memory Bank for a new project |
+| `memorybank_initialize` | Create basic templates (no AI, instant) |
 | `memorybank_update_context` | Update active context with session info |
 | `memorybank_record_decision` | Record technical decisions |
 | `memorybank_track_progress` | Update progress tracking |
@@ -60,9 +60,11 @@ This workspace uses [Memory Bank MCP](https://github.com/gcorroto/memory-bank-mc
 
 If this is the first time working with this project, initialize the Memory Bank:
 ```json
-// memorybank_initialize - Run once per project
+// memorybank_initialize - Creates basic templates (no AI, instant)
 { "projectId": "{{PROJECT_ID}}", "projectPath": "{{WORKSPACE_PATH}}", "projectName": "Project Name" }
 ```
+
+> **Tip**: After indexing, run `memorybank_generate_project_docs` to replace templates with AI-generated docs.
 
 ## Quick Reference
 

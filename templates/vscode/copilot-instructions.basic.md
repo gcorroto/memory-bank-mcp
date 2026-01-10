@@ -24,7 +24,7 @@ This project uses [Memory Bank MCP](https://github.com/gcorroto/memory-bank-mcp)
 #### Context Management (Session Tracking)
 | Tool | Description |
 |------|-------------|
-| `memorybank_initialize` | Initialize Memory Bank for a new project |
+| `memorybank_initialize` | Create basic templates (no AI, instant) |
 | `memorybank_update_context` | Update active context with session info |
 | `memorybank_record_decision` | Record technical decisions |
 | `memorybank_track_progress` | Update progress tracking |
@@ -77,7 +77,7 @@ Ask yourself:
 
 If this is the first time working with this project, initialize the Memory Bank:
 ```json
-// memorybank_initialize - Run once per project
+// memorybank_initialize - Creates basic templates (no AI, instant)
 {
   "projectId": "{{PROJECT_ID}}",
   "projectPath": "{{WORKSPACE_PATH}}",
@@ -85,7 +85,8 @@ If this is the first time working with this project, initialize the Memory Bank:
 }
 ```
 
-This creates the context tracking documents. Skip if already initialized.
+This creates basic template documents. Skip if already initialized.
+> **Tip**: After indexing, run `memorybank_generate_project_docs` to replace with AI-generated docs.
 
 ### Indexing Policy
 

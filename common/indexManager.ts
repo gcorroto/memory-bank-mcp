@@ -408,6 +408,7 @@ export class IndexManager {
         
         // Update docs incrementally based on changed files
         docsGeneration = await this.projectKnowledgeService.updateDocuments(
+          projectId,
           allChunks,
           changedFiles
         );

@@ -60,13 +60,13 @@ This project uses Memory Bank MCP as a **RAG system** (Retrieval-Augmented Gener
 #### Project Knowledge Layer
 | Tool | Description |
 |------|-------------|
-| `memorybank_generate_project_docs` | Generate AI documentation |
+| `memorybank_generate_project_docs` | Generate AI docs (replaces templates) |
 | `memorybank_get_project_docs` | Read project documentation |
 
 #### Context Management
 | Tool | Description |
 |------|-------------|
-| `memorybank_initialize` | Initialize for new project |
+| `memorybank_initialize` | Create basic templates (no AI, instant) |
 | `memorybank_update_context` | Update session context |
 | `memorybank_record_decision` | Record decisions |
 | `memorybank_track_progress` | Track progress |
@@ -101,13 +101,14 @@ CONFIRM TO USER
 
 1. **Initialize if first time**:
 ```json
-// memorybank_initialize (once per project)
+// memorybank_initialize - Creates basic templates (no AI, instant)
 {
   "projectId": "{{PROJECT_ID}}",
   "projectPath": "{{WORKSPACE_PATH}}",
   "projectName": "Project Name"
 }
 ```
+> After indexing, run `memorybank_generate_project_docs` to replace with AI docs.
 
 2. **Get active context**:
 ```json
