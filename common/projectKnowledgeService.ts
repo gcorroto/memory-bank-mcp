@@ -60,7 +60,7 @@ export interface GenerationResult {
 export interface ProjectKnowledgeOptions {
   model?: string;              // Default: gpt-5-mini
   reasoningEffort?: "low" | "medium" | "high";  // Default: medium
-  docsPath?: string;           // Default: .memorybank/project-docs
+  storagePath?: string;        // Default: .memorybank (base path, docs go to projects/{projectId}/docs/)
   enableSummary?: boolean;     // Default: true
   maxChunksPerDoc?: number;    // Default: 50
 }
@@ -202,7 +202,7 @@ Generate a markdown document tracking project documentation progress.`,
 export class ProjectKnowledgeService {
   private client: OpenAI;
   private options: Required<ProjectKnowledgeOptions>;
-  private metadataCache: Map<ProjectDocType, ProjectDocMetadata>;
+  private metadataCacheByProject: Map<string, Map<ProjectDocType, ProjectDocMetadata>>;
   
   constructor(apiKey: string, options?: ProjectKnowledgeOptions) {
     if (!apiKey) {
@@ -214,63 +214,83 @@ export class ProjectKnowledgeService {
     this.options = {
       model: options?.model || "gpt-5-mini",
       reasoningEffort: options?.reasoningEffort || "medium",
-      docsPath: options?.docsPath || ".memorybank/project-docs",
+      storagePath: options?.storagePath || ".memorybank",
       enableSummary: options?.enableSummary !== undefined ? options.enableSummary : true,
       maxChunksPerDoc: options?.maxChunksPerDoc || 50,
     };
     
-    this.metadataCache = new Map();
-    this.ensureDocsDirectory();
-    this.loadMetadata();
+    this.metadataCacheByProject = new Map();
   }
   
   /**
-   * Ensures the docs directory exists
+   * Gets the docs path for a specific project
    */
-  private ensureDocsDirectory(): void {
-    if (!fs.existsSync(this.options.docsPath)) {
-      fs.mkdirSync(this.options.docsPath, { recursive: true });
-      console.error(`Created project docs directory: ${this.options.docsPath}`);
+  public getProjectDocsPath(projectId: string): string {
+    return path.join(this.options.storagePath, "projects", projectId, "docs");
+  }
+  
+  /**
+   * Ensures the docs directory exists for a project
+   */
+  private ensureProjectDocsDirectory(projectId: string): string {
+    const docsPath = this.getProjectDocsPath(projectId);
+    if (!fs.existsSync(docsPath)) {
+      fs.mkdirSync(docsPath, { recursive: true });
+      console.error(`Created project docs directory: ${docsPath}`);
     }
+    return docsPath;
   }
   
   /**
-   * Loads metadata for all documents
+   * Loads metadata for a specific project
    */
-  private loadMetadata(): void {
-    const metadataPath = path.join(this.options.docsPath, "metadata.json");
+  private loadProjectMetadata(projectId: string): Map<ProjectDocType, ProjectDocMetadata> {
+    if (this.metadataCacheByProject.has(projectId)) {
+      return this.metadataCacheByProject.get(projectId)!;
+    }
+    
+    const docsPath = this.getProjectDocsPath(projectId);
+    const metadataPath = path.join(docsPath, "metadata.json");
+    const cache = new Map<ProjectDocType, ProjectDocMetadata>();
     
     try {
       if (fs.existsSync(metadataPath)) {
         const data = JSON.parse(fs.readFileSync(metadataPath, "utf-8"));
         
         for (const [type, metadata] of Object.entries(data)) {
-          this.metadataCache.set(type as ProjectDocType, metadata as ProjectDocMetadata);
+          cache.set(type as ProjectDocType, metadata as ProjectDocMetadata);
         }
         
-        console.error(`Loaded metadata for ${this.metadataCache.size} project documents`);
+        console.error(`Loaded metadata for ${cache.size} documents (project: ${projectId})`);
       }
     } catch (error) {
-      console.error(`Warning: Could not load project docs metadata: ${error}`);
+      console.error(`Warning: Could not load project docs metadata for ${projectId}: ${error}`);
     }
+    
+    this.metadataCacheByProject.set(projectId, cache);
+    return cache;
   }
   
   /**
-   * Saves metadata for all documents
+   * Saves metadata for a specific project
    */
-  private saveMetadata(): void {
-    const metadataPath = path.join(this.options.docsPath, "metadata.json");
+  private saveProjectMetadata(projectId: string): void {
+    const docsPath = this.ensureProjectDocsDirectory(projectId);
+    const metadataPath = path.join(docsPath, "metadata.json");
+    const cache = this.metadataCacheByProject.get(projectId);
+    
+    if (!cache) return;
     
     try {
       const data: Record<string, ProjectDocMetadata> = {};
       
-      for (const [type, metadata] of this.metadataCache) {
+      for (const [type, metadata] of cache) {
         data[type] = metadata;
       }
       
       fs.writeFileSync(metadataPath, JSON.stringify(data, null, 2));
     } catch (error) {
-      console.error(`Warning: Could not save project docs metadata: ${error}`);
+      console.error(`Warning: Could not save project docs metadata for ${projectId}: ${error}`);
     }
   }
   
