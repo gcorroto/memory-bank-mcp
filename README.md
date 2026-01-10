@@ -805,10 +805,41 @@ Si `pendingFiles` muestra archivos pendientes:
 
 ## 🎓 Inspiración
 
-Este proyecto está inspirado en el sistema de Memory Bank de Cursor IDE, tal como se describe en:
+Este proyecto combina los mejores conceptos de dos enfoques complementarios:
 
-- [Advanced Cursor: Use the Memory Bank](https://medium.com/codetodeploy/advanced-cursor-use-the-memory-bank-to-eliminate-hallucination-affd3fbeefa3)
-- [How Cursor Indexes Codebases Fast](https://read.engineerscodex.com/p/how-cursor-indexes-codebases-fast)
+### Cursor IDE - Indexación Semántica
+
+El sistema de indexación vectorial y búsqueda semántica está inspirado en cómo Cursor IDE maneja la memoria de código:
+
+- [Advanced Cursor: Use the Memory Bank](https://medium.com/codetodeploy/advanced-cursor-use-the-memory-bank-to-eliminate-hallucination-affd3fbeefa3) - Eliminar alucinaciones con memoria persistente
+- [How Cursor Indexes Codebases Fast](https://read.engineerscodex.com/p/how-cursor-indexes-codebases-fast) - Técnicas de indexación eficiente
+
+### Cline - Documentación Estructurada del Proyecto
+
+El sistema de **Project Knowledge Layer** (documentos markdown estructurados) está inspirado en el enfoque de Cline Memory Bank:
+
+- [Cline MCP Memory Bank](https://github.com/dazeb/cline-mcp-memory-bank) - Implementación de referencia del Memory Bank para Cline
+- [Cline Memory Bank Custom Instructions](https://gist.github.com/zoharbabin/441e8e8b719a444f26b34bd0b189b283) - Instrucciones personalizadas para usar el Memory Bank
+
+**Documentos del enfoque Cline que adoptamos:**
+| Documento | Propósito |
+|-----------|-----------|
+| `projectBrief.md` | Requisitos y alcance del proyecto |
+| `productContext.md` | Propósito, usuarios objetivo, problemas que resuelve |
+| `activeContext.md` | Tareas actuales, cambios recientes, próximos pasos |
+| `systemPatterns.md` | Decisiones arquitectónicas, patrones, relaciones |
+| `techContext.md` | Stack tecnológico, dependencias, configuraciones |
+| `progress.md` | Hitos, estado general, problemas conocidos |
+
+### Nuestra Contribución
+
+Memory Bank MCP **fusiona ambos enfoques**:
+
+1. **Búsqueda Semántica** (estilo Cursor): Embeddings vectoriales + LanceDB para encontrar código relevante instantáneamente
+2. **Documentación Estructurada** (estilo Cline): 6 documentos markdown generados con IA que proporcionan contexto global
+3. **Multi-Proyecto**: Capacidad única de consultar múltiples proyectos indexados desde cualquier workspace
+
+Esta combinación permite que los agentes tengan tanto **precisión** (búsqueda semántica) como **comprensión global** (documentación estructurada)
 
 ---
 
