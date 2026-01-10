@@ -178,14 +178,15 @@ Ask yourself:
 }
 ```
 
-For multiple files:
+For multiple files (a directory):
 ```json
 {
   "projectId": "{{PROJECT_ID}}",
-  "path": "src/components/",
-  "forceReindex": true
+  "path": "C:/workspaces/proyecto/src/components/"
 }
 ```
+
+Note: No need for `forceReindex: true` - the system detects changes via hash automatically.
 
 ### Why This Matters
 

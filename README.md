@@ -905,7 +905,7 @@ npm test -- --coverage
 1. **Aumenta `minScore`**: Usa 0.8 o 0.9 para resultados más precisos
 2. **Usa filtros**: `filterByFile` o `filterByLanguage`
 3. **Reformula la query**: Sé más específico y descriptivo
-4. **Reindexa**: `memorybank_index_code({ forceReindex: true })`
+4. **Reindexa**: `memorybank_index_code({ path: "..." })` (detecta cambios automáticamente por hash)
 
 ### Error: "projectId is required"
 
@@ -917,14 +917,16 @@ npm test -- --coverage
 memorybank_get_stats({})
 ```
 
-Si `pendingFiles` muestra archivos pendientes:
+Si `pendingFiles` muestra archivos pendientes, reindexa el directorio:
 
 ```json
 {
   "projectId": "my-project",
-  "forceReindex": true
+  "path": "C:/workspaces/mi-proyecto/src"
 }
 ```
+
+El sistema detecta cambios por hash automáticamente. Solo usa `forceReindex: true` si necesitas regenerar embeddings aunque no haya cambios.
 
 ---
 

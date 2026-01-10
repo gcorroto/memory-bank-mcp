@@ -155,14 +155,15 @@ Checklist:
 }
 ```
 
-For multiple files:
+For multiple files (a directory):
 ```json
 {
   "projectId": "{{PROJECT_ID}}",
-  "path": "src/",
-  "forceReindex": true
+  "path": "C:/workspaces/proyecto/src/"
 }
 ```
+
+Note: No need for `forceReindex` - changes are detected via hash automatically.
 
 ### Why This Matters
 

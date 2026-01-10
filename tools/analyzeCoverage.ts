@@ -270,7 +270,7 @@ function generateRecommendations(
   // Pending reindex
   if (stats.pendingReindexFiles > 0) {
     recommendations.push(
-      `🔄 Hay ${stats.pendingReindexFiles} archivo(s) con cambios pendientes de reindexación. Ejecuta memorybank_index_code({ forceReindex: true })`
+      `🔄 Hay ${stats.pendingReindexFiles} archivo(s) con cambios pendientes. Ejecuta memorybank_index_code con el path del directorio - los cambios se detectan automáticamente por hash.`
     );
   }
   

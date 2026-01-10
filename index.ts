@@ -50,25 +50,32 @@ const server = new McpServer({
 // Tool: Index Code
 server.tool(
   "memorybank_index_code",
-  "Indexa semánticamente código de un directorio o archivo específico para permitir búsquedas semánticas. El projectId es OBLIGATORIO y debe coincidir con el definido en AGENTS.md",
+  `Indexa semánticamente código de un DIRECTORIO para búsquedas semánticas.
+
+⚠️ IMPORTANTE:
+- El path debe ser una RUTA ABSOLUTA a un DIRECTORIO (no archivo)
+- Ejemplo correcto: "C:/workspaces/mi-proyecto/src/components"
+- Ejemplo incorrecto: "src/components" (ruta relativa)
+- Ejemplo incorrecto: "C:/workspaces/mi-proyecto/src/file.ts" (archivo, no directorio)
+
+Si quieres indexar un archivo específico, usa el directorio que lo contiene.`,
   {
     projectId: z
       .string()
-      .describe("Identificador único del proyecto (OBLIGATORIO). Debe coincidir con el definido en AGENTS.md del proyecto"),
+      .describe("Identificador único del proyecto (OBLIGATORIO). Debe coincidir con el definido en AGENTS.md"),
     path: z
       .string()
-      .optional()
-      .describe("Ruta relativa o absoluta del directorio/archivo a indexar (por defecto: raíz del workspace)"),
+      .describe("RUTA ABSOLUTA al DIRECTORIO a indexar. Ejemplo: 'C:/workspaces/proyecto/src'. NO usar rutas relativas. NO usar rutas a archivos."),
     recursive: z
       .boolean()
       .optional()
       .default(true)
-      .describe("Indexar recursivamente subdirectorios"),
+      .describe("Indexar recursivamente subdirectorios (default: true)"),
     forceReindex: z
       .boolean()
       .optional()
       .default(false)
-      .describe("Forzar reindexación completa aunque no haya cambios"),
+      .describe("RARAMENTE NECESARIO. El sistema detecta cambios por hash automáticamente. Solo usa true si necesitas regenerar embeddings sin cambios en archivos."),
   },
   async (args) => {
     const result = await indexCode(
@@ -140,19 +147,22 @@ server.tool(
 // Tool: Read File
 server.tool(
   "memorybank_read_file",
-  "Lee el contenido de un archivo específico del workspace. Usa esta herramienta para obtener contexto adicional cuando los fragmentos de búsqueda no son suficientes",
+  `Lee el contenido de un archivo específico. Usa para obtener contexto adicional.
+
+⚠️ Preferir RUTA ABSOLUTA para evitar errores.
+Ejemplo: "C:/workspaces/proyecto/src/index.ts"`,
   {
     path: z
       .string()
-      .describe("Ruta relativa o absoluta del archivo a leer"),
+      .describe("Ruta al archivo. Preferir ABSOLUTA: 'C:/workspaces/proyecto/src/file.ts'"),
     startLine: z
       .number()
       .optional()
-      .describe("Línea inicial para leer un rango específico (opcional)"),
+      .describe("Línea inicial (opcional)"),
     endLine: z
       .number()
       .optional()
-      .describe("Línea final para leer un rango específico (opcional)"),
+      .describe("Línea final (opcional)"),
   },
   async (args) => {
     const result = await readFile(
@@ -173,22 +183,25 @@ server.tool(
 // Tool: Write File
 server.tool(
   "memorybank_write_file",
-  "Escribe o modifica un archivo y automáticamente lo reindexa en el Memory Bank para mantener la consistencia. El projectId es OBLIGATORIO para la reindexación correcta",
+  `Escribe un archivo y automáticamente lo reindexa en el Memory Bank.
+
+⚠️ Preferir RUTA ABSOLUTA para evitar errores.
+Ejemplo path: "C:/workspaces/proyecto/src/nuevo.ts"`,
   {
     projectId: z
       .string()
-      .describe("Identificador del proyecto (OBLIGATORIO). Necesario para la auto-reindexación correcta"),
+      .describe("Identificador del proyecto (OBLIGATORIO)"),
     path: z
       .string()
-      .describe("Ruta relativa o absoluta del archivo a escribir"),
+      .describe("Ruta al archivo. Preferir ABSOLUTA: 'C:/workspaces/proyecto/src/file.ts'"),
     content: z
       .string()
-      .describe("Contenido completo del archivo a escribir"),
+      .describe("Contenido COMPLETO del archivo"),
     autoReindex: z
       .boolean()
       .optional()
       .default(true)
-      .describe("Reindexar automáticamente el archivo después de escribirlo"),
+      .describe("Auto-reindexar después de escribir (default: true)"),
   },
   async (args) => {
     const result = await writeFile(
@@ -225,14 +238,19 @@ server.tool(
 // Tool: Analyze Coverage
 server.tool(
   "memorybank_analyze_coverage",
-  "Analiza la cobertura de indexación del proyecto. Muestra qué carpetas/archivos están indexados, cuáles no, y cuáles tienen cambios pendientes. OBLIGATORIO: projectId y path (ruta absoluta del workspace). NOTA: Puede tardar en workspaces grandes",
+  `Analiza la cobertura de indexación del proyecto.
+
+⚠️ IMPORTANTE:
+- path debe ser RUTA ABSOLUTA al DIRECTORIO raíz del workspace
+- Ejemplo: "C:/workspaces/mi-proyecto" (NO rutas relativas)
+- Puede tardar en workspaces grandes`,
   {
     projectId: z
       .string()
-      .describe("Identificador del proyecto a analizar (OBLIGATORIO)"),
+      .describe("Identificador del proyecto (OBLIGATORIO)"),
     path: z
       .string()
-      .describe("Ruta absoluta del workspace a analizar (OBLIGATORIO). Ejemplo: 'C:/workspaces/mi-proyecto'"),
+      .describe("RUTA ABSOLUTA al directorio raíz del workspace. Ejemplo: 'C:/workspaces/mi-proyecto'"),
   },
   async (args) => {
     try {
@@ -350,14 +368,16 @@ server.tool(
 // Tool: Initialize Memory Bank
 server.tool(
   initializeMemoryBankToolDefinition.name,
-  initializeMemoryBankToolDefinition.description,
+  initializeMemoryBankToolDefinition.description + `
+
+⚠️ projectPath debe ser RUTA ABSOLUTA. Ejemplo: "C:/workspaces/mi-proyecto"`,
   {
     projectId: z
       .string()
       .describe("Identificador único del proyecto (OBLIGATORIO)"),
     projectPath: z
       .string()
-      .describe("Ruta absoluta del proyecto"),
+      .describe("RUTA ABSOLUTA al proyecto. Ejemplo: 'C:/workspaces/mi-proyecto'"),
     projectName: z
       .string()
       .optional()
