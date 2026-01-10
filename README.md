@@ -40,11 +40,18 @@ Con Memory Bank, las IAs:
 - **🔒 Privacidad**: Vector store local, respeta .gitignore y .memoryignore
 - **🔀 Multi-Proyecto**: Consulta cualquier proyecto indexado usando su `projectId`
 
-### Project Knowledge Layer (Conocimiento Global) 🆕
+### Project Knowledge Layer (Conocimiento Global)
 - **📄 Documentación Automática**: Genera 6 documentos markdown estructurados del proyecto
 - **🧠 IA con Razonamiento**: Usa OpenAI Responses API con modelos de razonamiento (gpt-5-mini)
 - **🔄 Actualización Inteligente**: Solo regenera documentos afectados por cambios
 - **📚 Contexto Global**: Complementa búsqueda precisa con visión de alto nivel
+
+### Context Management (Gestión de Sesión) 🆕
+- **🚀 Inicialización Rápida**: Crea estructura de Memory Bank con plantillas iniciales (sin IA)
+- **📝 Tracking de Sesión**: Registra contexto activo, cambios recientes y próximos pasos
+- **📋 Log de Decisiones**: Documenta decisiones técnicas con rationale y alternativas
+- **📊 Seguimiento de Progreso**: Gestiona tareas, milestones y blockers
+- **📡 MCP Resources**: Acceso directo de solo lectura a documentos via URIs
 
 ## 📋 Requisitos
 
@@ -443,6 +450,153 @@ Lee la documentación del proyecto generada por IA.
 - `projectId` **(REQUERIDO)**: Identificador del proyecto
 - `document` (opcional): `"summary"`, `"all"`, o nombre específico (`projectBrief`, `systemPatterns`, etc.)
 - `format` (opcional): `"full"` o `"summary"` (default: "full")
+
+---
+
+## 🔄 Herramientas de Gestión de Contexto (Cline-style)
+
+Estas herramientas permiten gestionar el contexto del proyecto de forma manual, complementando la generación automática con IA.
+
+### `memorybank_initialize`
+
+Inicializa el Memory Bank para un proyecto nuevo. Crea la estructura de directorios y 7 documentos markdown con plantillas iniciales. **No usa IA**.
+
+**Parámetros:**
+- `projectId` **(REQUERIDO)**: Identificador único del proyecto
+- `projectPath` **(REQUERIDO)**: Ruta absoluta del proyecto
+- `projectName` (opcional): Nombre legible del proyecto
+- `description` (opcional): Descripción inicial del proyecto
+
+**Ejemplo:**
+```json
+{
+  "projectId": "my-project",
+  "projectPath": "C:/workspaces/my-project",
+  "projectName": "My Awesome Project",
+  "description": "A web application for..."
+}
+```
+
+**Documentos creados:**
+- `projectBrief.md` - Descripción general
+- `productContext.md` - Contexto de producto
+- `systemPatterns.md` - Patrones de arquitectura
+- `techContext.md` - Stack tecnológico
+- `activeContext.md` - Contexto de sesión
+- `progress.md` - Seguimiento de progreso
+- `decisionLog.md` - Log de decisiones
+
+### `memorybank_update_context`
+
+Actualiza el contexto activo con información de la sesión actual. Mantiene historial de las últimas 10 sesiones. **No usa IA**.
+
+**Parámetros:**
+- `projectId` **(REQUERIDO)**: Identificador del proyecto
+- `currentSession` (opcional): Información de sesión (date, mode, task)
+- `recentChanges` (opcional): Lista de cambios recientes
+- `openQuestions` (opcional): Preguntas pendientes
+- `nextSteps` (opcional): Próximos pasos planificados
+- `notes` (opcional): Notas adicionales
+
+**Ejemplo:**
+```json
+{
+  "projectId": "my-project",
+  "currentSession": {
+    "mode": "development",
+    "task": "Implementing authentication"
+  },
+  "recentChanges": ["Added JWT middleware", "Created user model"],
+  "nextSteps": ["Add refresh token", "Create login endpoint"]
+}
+```
+
+### `memorybank_record_decision`
+
+Registra decisiones técnicas con rationale en el log de decisiones. **No usa IA**.
+
+**Parámetros:**
+- `projectId` **(REQUERIDO)**: Identificador del proyecto
+- `decision` **(REQUERIDO)**: Objeto con información de la decisión
+  - `title` **(REQUERIDO)**: Título de la decisión
+  - `description` **(REQUERIDO)**: Qué se decidió
+  - `rationale` **(REQUERIDO)**: Por qué se tomó esta decisión
+  - `alternatives` (opcional): Alternativas consideradas
+  - `impact` (opcional): Impacto esperado
+  - `category` (opcional): architecture, technology, dependencies, etc.
+
+**Ejemplo:**
+```json
+{
+  "projectId": "my-project",
+  "decision": {
+    "title": "JWT Authentication",
+    "description": "Use JWT tokens for API authentication",
+    "rationale": "Stateless, scalable, works well with microservices",
+    "alternatives": ["Session-based auth", "OAuth only"],
+    "category": "architecture"
+  }
+}
+```
+
+### `memorybank_track_progress`
+
+Actualiza el seguimiento de progreso con tareas, milestones y blockers. **No usa IA**.
+
+**Parámetros:**
+- `projectId` **(REQUERIDO)**: Identificador del proyecto
+- `progress` (opcional): Tareas a actualizar
+  - `completed`: Tareas completadas
+  - `inProgress`: Tareas en progreso
+  - `blocked`: Tareas bloqueadas
+  - `upcoming`: Próximas tareas
+- `milestone` (opcional): Milestone a añadir/actualizar (name, status, targetDate, notes)
+- `blockers` (opcional): Lista de blockers con severidad (low/medium/high)
+- `phase` (opcional): Fase actual del proyecto
+- `phaseStatus` (opcional): Estado de la fase
+
+**Ejemplo:**
+```json
+{
+  "projectId": "my-project",
+  "progress": {
+    "completed": ["Setup project structure", "Configure ESLint"],
+    "inProgress": ["Implement user authentication"],
+    "upcoming": ["Add unit tests"]
+  },
+  "milestone": {
+    "name": "MVP",
+    "status": "in_progress",
+    "targetDate": "2026-02-01"
+  }
+}
+```
+
+---
+
+## 📡 MCP Resources (Acceso Directo)
+
+Memory Bank expone recursos MCP para acceso directo de solo lectura a los documentos del proyecto.
+
+| Resource URI | Contenido |
+|--------------|-----------|
+| `memory://{projectId}/active` | Contexto activo de sesión |
+| `memory://{projectId}/progress` | Seguimiento de progreso |
+| `memory://{projectId}/decisions` | Log de decisiones técnicas |
+| `memory://{projectId}/context` | Contexto del proyecto (brief + tech) |
+| `memory://{projectId}/patterns` | Patrones de sistema |
+| `memory://{projectId}/brief` | Descripción del proyecto |
+
+**Ejemplo de uso:**
+```
+// Acceder al contexto activo del proyecto "my-project"
+memory://my-project/active
+
+// Acceder al log de decisiones
+memory://my-project/decisions
+```
+
+Los recursos son de solo lectura. Para modificar documentos, usa las herramientas correspondientes (`memorybank_update_context`, `memorybank_record_decision`, etc.).
 
 ---
 

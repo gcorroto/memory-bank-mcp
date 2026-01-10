@@ -16,6 +16,38 @@ You MUST use Memory Bank tools for ALL file operations:
 - **Writing files**: `memorybank_write_file`
 - **Searching code**: `memorybank_search`
 
+### Available Tools
+
+#### Core Memory Bank (Semantic Search)
+| Tool | Description |
+|------|-------------|
+| `memorybank_search` | Semantic search - use BEFORE any action |
+| `memorybank_index_code` | Index files for semantic search |
+| `memorybank_read_file` | Read file contents |
+| `memorybank_write_file` | Write files with auto-reindexing |
+
+#### Project Knowledge Layer (AI Documentation)
+| Tool | Description |
+|------|-------------|
+| `memorybank_generate_project_docs` | Generate AI documentation |
+| `memorybank_get_project_docs` | Read project documentation |
+
+#### Context Management (Session Tracking)
+| Tool | Description |
+|------|-------------|
+| `memorybank_initialize` | Initialize Memory Bank for a new project |
+| `memorybank_update_context` | Update active context with session info |
+| `memorybank_record_decision` | Record technical decisions |
+| `memorybank_track_progress` | Update progress tracking |
+
+#### MCP Resources (Direct Access)
+| Resource URI | Content |
+|--------------|---------|
+| `memory://{{PROJECT_ID}}/active` | Current session context |
+| `memory://{{PROJECT_ID}}/progress` | Progress tracking |
+| `memory://{{PROJECT_ID}}/decisions` | Decision log |
+| `memory://{{PROJECT_ID}}/context` | Project context |
+
 ### File Operations
 
 #### Reading Files
@@ -56,6 +88,37 @@ Note: `memorybank_write_file` automatically reindexes the file when `autoReindex
 }
 ```
 
+### Session Start
+
+At the beginning of each session:
+
+1. **Update session context**:
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "currentSession": {
+    "mode": "development",
+    "task": "Session start"
+  }
+}
+```
+
+2. **Get current project status**:
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "document": "activeContext"
+}
+```
+
+3. **Get project documentation**:
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "document": "summary"
+}
+```
+
 ### Standard Workflow
 
 1. **Search**: `memorybank_search({ projectId: "{{PROJECT_ID}}", query: "..." })`
@@ -74,23 +137,20 @@ Note: `memorybank_write_file` automatically reindexes the file when `autoReindex
    - Provide complete file content
    - Auto-reindexes by default
 
-### Session Start
+5. **Track**: `memorybank_track_progress({ projectId: "{{PROJECT_ID}}", progress: {...} })`
+   - Update completed tasks
 
-At the beginning of each session:
+### Recording Decisions
 
-1. Get current project status:
+When making significant technical decisions:
 ```json
 {
   "projectId": "{{PROJECT_ID}}",
-  "document": "activeContext"
-}
-```
-
-2. Get project documentation:
-```json
-{
-  "projectId": "{{PROJECT_ID}}",
-  "document": "summary"
+  "decision": {
+    "title": "Decision title",
+    "description": "What was decided",
+    "rationale": "Why this decision was made"
+  }
 }
 ```
 
@@ -143,5 +203,6 @@ If a tool returns an error:
 - This is **Sandboxed Mode**: no direct file system access
 - ALL file operations go through Memory Bank tools
 - `memorybank_write_file` auto-reindexes changes
+- Progress and decisions are tracked
 - All Memory Bank operations use `projectId: "{{PROJECT_ID}}"`
 - This mode is ideal for restricted environments or remote development

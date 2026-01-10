@@ -16,6 +16,42 @@ You MUST use Memory Bank tools for ALL file operations:
 - **Writing files**: `memorybank_write_file`
 - **Searching code**: `memorybank_search`
 
+### Available Tools
+
+#### Core Memory Bank (Semantic Search)
+| Tool | Description |
+|------|-------------|
+| `memorybank_index_code` | Index code semantically for search |
+| `memorybank_search` | Semantic search in indexed code |
+| `memorybank_read_file` | Read file contents |
+| `memorybank_write_file` | Write files with auto-reindexing |
+| `memorybank_get_stats` | Get Memory Bank statistics |
+| `memorybank_analyze_coverage` | Analyze indexing coverage |
+
+#### Project Knowledge Layer (AI Documentation)
+| Tool | Description |
+|------|-------------|
+| `memorybank_generate_project_docs` | Generate AI documentation |
+| `memorybank_get_project_docs` | Read project documentation |
+
+#### Context Management (Session Tracking)
+| Tool | Description |
+|------|-------------|
+| `memorybank_initialize` | Initialize Memory Bank for a new project |
+| `memorybank_update_context` | Update active context with session info |
+| `memorybank_record_decision` | Record technical decisions |
+| `memorybank_track_progress` | Update progress tracking |
+
+#### MCP Resources (Direct Access)
+| Resource URI | Content |
+|--------------|---------|
+| `memory://{{PROJECT_ID}}/active` | Current session context |
+| `memory://{{PROJECT_ID}}/progress` | Progress tracking |
+| `memory://{{PROJECT_ID}}/decisions` | Decision log |
+| `memory://{{PROJECT_ID}}/context` | Project context |
+| `memory://{{PROJECT_ID}}/patterns` | System patterns |
+| `memory://{{PROJECT_ID}}/brief` | Project brief |
+
 ### File Operations
 
 #### Reading Files
@@ -56,6 +92,37 @@ Note: `memorybank_write_file` automatically reindexes the file when `autoReindex
 }
 ```
 
+### Session Start
+
+At the beginning of each session:
+
+1. **Update session context**:
+   ```json
+   {
+     "projectId": "{{PROJECT_ID}}",
+     "currentSession": {
+       "mode": "development",
+       "task": "Session start"
+     }
+   }
+   ```
+
+2. **Get current project status**:
+   ```json
+   {
+     "projectId": "{{PROJECT_ID}}",
+     "document": "activeContext"
+   }
+   ```
+
+3. **Get project documentation**:
+   ```json
+   {
+     "projectId": "{{PROJECT_ID}}",
+     "document": "summary"
+   }
+   ```
+
 ### Workflow
 
 ```mermaid
@@ -68,7 +135,8 @@ flowchart TD
     E --> F{Need to modify?}
     F -->|Yes| G[memorybank_write_file]
     F -->|No| H[Answer User]
-    G --> H
+    G --> I[memorybank_track_progress]
+    I --> H
 ```
 
 ### Standard Workflow Steps
@@ -89,25 +157,23 @@ flowchart TD
    - Provide complete file content
    - Auto-reindexes by default
 
-### Session Start
+5. **Track**: `memorybank_track_progress({ projectId: "{{PROJECT_ID}}", progress: {...} })`
+   - Update completed tasks
+   - Note any blockers
 
-At the beginning of each session:
+### Recording Decisions
 
-1. Get current project status:
-   ```json
-   {
-     "projectId": "{{PROJECT_ID}}",
-     "document": "activeContext"
-   }
-   ```
-
-2. Get project documentation:
-   ```json
-   {
-     "projectId": "{{PROJECT_ID}}",
-     "document": "summary"
-   }
-   ```
+When making significant technical decisions:
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "decision": {
+    "title": "Decision title",
+    "description": "What was decided",
+    "rationale": "Why this decision was made"
+  }
+}
+```
 
 ### Important Rules
 
@@ -116,6 +182,7 @@ At the beginning of each session:
 3. **Use the projectId** "{{PROJECT_ID}}" for all operations
 4. **Search before reading** - the search may have all info you need
 5. **Let autoReindex handle indexing** - no manual index calls needed after writes
+6. **Track progress** after completing tasks
 
 ### Error Handling
 
@@ -153,5 +220,6 @@ If a tool returns an error:
 - This is **Sandboxed Mode**: no direct file system access
 - ALL file operations go through Memory Bank tools
 - `memorybank_write_file` auto-reindexes changes
+- Progress and decisions are tracked
 - All operations use `projectId: "{{PROJECT_ID}}"`
 - This mode is ideal for restricted environments or remote development

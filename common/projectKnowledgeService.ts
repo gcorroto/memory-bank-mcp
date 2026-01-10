@@ -791,6 +791,96 @@ ${chunk.content}
       documents: documents as Record<ProjectDocType, { exists: boolean; lastGenerated?: Date }>,
     };
   }
+  
+  // ==========================================
+  // Project-specific document methods (for MCP Resources)
+  // ==========================================
+  
+  /**
+   * Gets the docs path for a specific project
+   */
+  getProjectDocsPath(projectId: string): string {
+    const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
+    return path.join(storagePath, "projects", projectId, "docs");
+  }
+  
+  /**
+   * Checks if a project's Memory Bank is initialized
+   */
+  isProjectInitialized(projectId: string): boolean {
+    const docsPath = this.getProjectDocsPath(projectId);
+    return fs.existsSync(docsPath);
+  }
+  
+  /**
+   * Reads a specific document for a project (for MCP Resources)
+   */
+  getProjectDocument(projectId: string, docName: string): string | null {
+    const docsPath = this.getProjectDocsPath(projectId);
+    
+    // Map document names to filenames
+    const docMap: Record<string, string> = {
+      "projectBrief": "projectBrief.md",
+      "productContext": "productContext.md",
+      "systemPatterns": "systemPatterns.md",
+      "techContext": "techContext.md",
+      "activeContext": "activeContext.md",
+      "progress": "progress.md",
+      "decisionLog": "decisionLog.md",
+      "decisions": "decisionLog.md", // Alias
+      "active": "activeContext.md", // Alias
+      "context": "projectBrief.md", // Alias - returns project brief
+      "patterns": "systemPatterns.md", // Alias
+      "brief": "projectBrief.md", // Alias
+      "tech": "techContext.md", // Alias
+      "product": "productContext.md", // Alias
+    };
+    
+    const filename = docMap[docName] || `${docName}.md`;
+    const filePath = path.join(docsPath, filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    
+    return fs.readFileSync(filePath, "utf-8");
+  }
+  
+  /**
+   * Gets combined project context (projectBrief + techContext)
+   */
+  getProjectContext(projectId: string): string | null {
+    const brief = this.getProjectDocument(projectId, "projectBrief");
+    const tech = this.getProjectDocument(projectId, "techContext");
+    
+    if (!brief && !tech) return null;
+    
+    let content = "# Project Context\n\n";
+    
+    if (brief) {
+      content += brief + "\n\n---\n\n";
+    }
+    
+    if (tech) {
+      content += tech;
+    }
+    
+    return content;
+  }
+  
+  /**
+   * Lists all available documents for a project
+   */
+  listProjectDocuments(projectId: string): string[] {
+    const docsPath = this.getProjectDocsPath(projectId);
+    
+    if (!fs.existsSync(docsPath)) {
+      return [];
+    }
+    
+    const files = fs.readdirSync(docsPath);
+    return files.filter(f => f.endsWith(".md"));
+  }
 }
 
 /**

@@ -11,6 +11,42 @@
 
 This project uses Memory Bank MCP for semantic code understanding. You MUST follow these rules.
 
+### Available Tools
+
+#### Core Memory Bank (Semantic Search)
+| Tool | Description |
+|------|-------------|
+| `memorybank_index_code` | Index code semantically for search |
+| `memorybank_search` | Semantic search in indexed code |
+| `memorybank_read_file` | Read file contents |
+| `memorybank_write_file` | Write files with auto-reindexing |
+| `memorybank_get_stats` | Get Memory Bank statistics |
+| `memorybank_analyze_coverage` | Analyze indexing coverage |
+
+#### Project Knowledge Layer (AI Documentation)
+| Tool | Description |
+|------|-------------|
+| `memorybank_generate_project_docs` | Generate AI documentation |
+| `memorybank_get_project_docs` | Read project documentation |
+
+#### Context Management (Session Tracking)
+| Tool | Description |
+|------|-------------|
+| `memorybank_initialize` | Initialize Memory Bank for a new project |
+| `memorybank_update_context` | Update active context with session info |
+| `memorybank_record_decision` | Record technical decisions |
+| `memorybank_track_progress` | Update progress tracking |
+
+#### MCP Resources (Direct Access)
+| Resource URI | Content |
+|--------------|---------|
+| `memory://{{PROJECT_ID}}/active` | Current session context |
+| `memory://{{PROJECT_ID}}/progress` | Progress tracking |
+| `memory://{{PROJECT_ID}}/decisions` | Decision log |
+| `memory://{{PROJECT_ID}}/context` | Project context |
+| `memory://{{PROJECT_ID}}/patterns` | System patterns |
+| `memory://{{PROJECT_ID}}/brief` | Project brief |
+
 ### CRITICAL: Always Consult Before Acting
 
 Before answering ANY question or making ANY code change, you MUST:
@@ -64,11 +100,27 @@ When the user asks to index:
    }
    ```
 
+### Recording Decisions
+
+When making significant technical decisions, record them:
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "decision": {
+    "title": "Decision title",
+    "description": "What was decided",
+    "rationale": "Why this decision was made",
+    "alternatives": ["Alternative 1", "Alternative 2"]
+  }
+}
+```
+
 ### Workflow Summary
 
 ```
 User Question → memorybank_search → Understand → Answer
 User Request → memorybank_search → Ask Permission → Modify → Suggest Reindex
+Technical Decision → memorybank_record_decision
 ```
 
 ---

@@ -26,6 +26,12 @@ import { analyzeCoverage } from "./tools/analyzeCoverage.js";
 import { generateProjectDocs, generateProjectDocsToolDefinition } from "./tools/generateProjectDocs.js";
 import { getProjectDocs, getProjectDocsToolDefinition } from "./tools/getProjectDocs.js";
 
+// Import new context management tools
+import { initializeMemoryBank, initializeMemoryBankToolDefinition } from "./tools/initializeMemoryBank.js";
+import { updateContext, updateContextToolDefinition } from "./tools/updateContext.js";
+import { recordDecision, recordDecisionToolDefinition } from "./tools/recordDecision.js";
+import { trackProgress, trackProgressToolDefinition } from "./tools/trackProgress.js";
+
 import { VERSION } from "./common/version.js";
 
 // Global services
@@ -337,6 +343,439 @@ server.tool(
   }
 );
 
+// ==========================================
+// Context Management Tools (Cline-style)
+// ==========================================
+
+// Tool: Initialize Memory Bank
+server.tool(
+  initializeMemoryBankToolDefinition.name,
+  initializeMemoryBankToolDefinition.description,
+  {
+    projectId: z
+      .string()
+      .describe("Identificador único del proyecto (OBLIGATORIO)"),
+    projectPath: z
+      .string()
+      .describe("Ruta absoluta del proyecto"),
+    projectName: z
+      .string()
+      .optional()
+      .describe("Nombre legible del proyecto (opcional)"),
+    description: z
+      .string()
+      .optional()
+      .describe("Descripción inicial del proyecto (opcional)"),
+  },
+  async (args) => {
+    const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
+    const result = await initializeMemoryBank(
+      {
+        projectId: args.projectId,
+        projectPath: args.projectPath,
+        projectName: args.projectName,
+        description: args.description,
+      },
+      storagePath
+    );
+    
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// Tool: Update Context
+server.tool(
+  updateContextToolDefinition.name,
+  updateContextToolDefinition.description,
+  {
+    projectId: z
+      .string()
+      .describe("Identificador único del proyecto (OBLIGATORIO)"),
+    currentSession: z
+      .object({
+        date: z.string().optional().describe("Fecha de la sesión (YYYY-MM-DD)"),
+        mode: z.string().optional().describe("Modo de trabajo: development, debugging, refactoring, etc."),
+        task: z.string().optional().describe("Descripción de la tarea actual"),
+      })
+      .optional()
+      .describe("Información de la sesión actual"),
+    recentChanges: z
+      .array(z.string())
+      .optional()
+      .describe("Lista de cambios recientes realizados"),
+    openQuestions: z
+      .array(z.string())
+      .optional()
+      .describe("Preguntas pendientes de resolver"),
+    nextSteps: z
+      .array(z.string())
+      .optional()
+      .describe("Próximos pasos planificados"),
+    notes: z
+      .string()
+      .optional()
+      .describe("Notas adicionales o consideraciones"),
+  },
+  async (args) => {
+    const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
+    const result = await updateContext(
+      {
+        projectId: args.projectId,
+        currentSession: args.currentSession,
+        recentChanges: args.recentChanges,
+        openQuestions: args.openQuestions,
+        nextSteps: args.nextSteps,
+        notes: args.notes,
+      },
+      storagePath
+    );
+    
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// Tool: Record Decision
+server.tool(
+  recordDecisionToolDefinition.name,
+  recordDecisionToolDefinition.description,
+  {
+    projectId: z
+      .string()
+      .describe("Identificador único del proyecto (OBLIGATORIO)"),
+    decision: z
+      .object({
+        title: z.string().describe("Título corto y descriptivo de la decisión"),
+        description: z.string().describe("Descripción detallada de lo que se decidió"),
+        rationale: z.string().describe("Por qué se tomó esta decisión"),
+        alternatives: z.array(z.string()).optional().describe("Alternativas consideradas"),
+        impact: z.string().optional().describe("Impacto esperado de la decisión"),
+        category: z.string().optional().describe("Categoría: architecture, technology, dependencies, etc."),
+        date: z.string().optional().describe("Fecha de la decisión (YYYY-MM-DD)"),
+      })
+      .describe("Información de la decisión a registrar"),
+  },
+  async (args) => {
+    const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
+    const result = await recordDecision(
+      {
+        projectId: args.projectId,
+        decision: args.decision,
+      },
+      storagePath
+    );
+    
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// Tool: Track Progress
+server.tool(
+  trackProgressToolDefinition.name,
+  trackProgressToolDefinition.description,
+  {
+    projectId: z
+      .string()
+      .describe("Identificador único del proyecto (OBLIGATORIO)"),
+    progress: z
+      .object({
+        completed: z.array(z.string()).optional().describe("Tareas completadas"),
+        inProgress: z.array(z.string()).optional().describe("Tareas en progreso"),
+        blocked: z.array(z.string()).optional().describe("Tareas bloqueadas"),
+        upcoming: z.array(z.string()).optional().describe("Próximas tareas"),
+      })
+      .optional()
+      .describe("Tareas a actualizar"),
+    milestone: z
+      .object({
+        name: z.string().describe("Nombre del milestone"),
+        status: z.enum(["pending", "in_progress", "completed"]).describe("Estado del milestone"),
+        targetDate: z.string().optional().describe("Fecha objetivo"),
+        notes: z.string().optional().describe("Notas adicionales"),
+      })
+      .optional()
+      .describe("Milestone a añadir o actualizar"),
+    blockers: z
+      .array(
+        z.object({
+          description: z.string().describe("Descripción del blocker"),
+          severity: z.enum(["low", "medium", "high"]).describe("Severidad"),
+        })
+      )
+      .optional()
+      .describe("Blockers a registrar"),
+    phase: z
+      .string()
+      .optional()
+      .describe("Fase actual del proyecto"),
+    phaseStatus: z
+      .string()
+      .optional()
+      .describe("Estado de la fase"),
+  },
+  async (args) => {
+    const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
+    const result = await trackProgress(
+      {
+        projectId: args.projectId,
+        progress: args.progress,
+        milestone: args.milestone,
+        blockers: args.blockers,
+        phase: args.phase,
+        phaseStatus: args.phaseStatus,
+      },
+      storagePath
+    );
+    
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// ==========================================
+// MCP Resources (Direct document access)
+// ==========================================
+
+// Resource: Project Active Context
+server.resource(
+  "memory://*/active",
+  "Contexto activo del proyecto: sesión actual, cambios recientes, próximos pasos",
+  async (uri) => {
+    const projectId = uri.pathname.split("/")[0] || uri.host;
+    
+    if (!projectKnowledgeService) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: "Error: Project Knowledge Service not initialized",
+        }],
+      };
+    }
+    
+    const content = projectKnowledgeService.getProjectDocument(projectId, "activeContext");
+    
+    if (!content) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: `No active context found for project "${projectId}". Run memorybank_initialize first.`,
+        }],
+      };
+    }
+    
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: "text/markdown",
+        text: content,
+      }],
+    };
+  }
+);
+
+// Resource: Project Progress
+server.resource(
+  "memory://*/progress",
+  "Seguimiento de progreso: tareas completadas, en progreso, bloqueadas y milestones",
+  async (uri) => {
+    const projectId = uri.pathname.split("/")[0] || uri.host;
+    
+    if (!projectKnowledgeService) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: "Error: Project Knowledge Service not initialized",
+        }],
+      };
+    }
+    
+    const content = projectKnowledgeService.getProjectDocument(projectId, "progress");
+    
+    if (!content) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: `No progress tracking found for project "${projectId}". Run memorybank_initialize first.`,
+        }],
+      };
+    }
+    
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: "text/markdown",
+        text: content,
+      }],
+    };
+  }
+);
+
+// Resource: Project Decisions
+server.resource(
+  "memory://*/decisions",
+  "Log de decisiones técnicas: historial de decisiones arquitectónicas y técnicas",
+  async (uri) => {
+    const projectId = uri.pathname.split("/")[0] || uri.host;
+    
+    if (!projectKnowledgeService) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: "Error: Project Knowledge Service not initialized",
+        }],
+      };
+    }
+    
+    const content = projectKnowledgeService.getProjectDocument(projectId, "decisionLog");
+    
+    if (!content) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: `No decision log found for project "${projectId}". Run memorybank_initialize first.`,
+        }],
+      };
+    }
+    
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: "text/markdown",
+        text: content,
+      }],
+    };
+  }
+);
+
+// Resource: Project Context (Brief + Tech)
+server.resource(
+  "memory://*/context",
+  "Contexto completo del proyecto: descripción general y stack tecnológico",
+  async (uri) => {
+    const projectId = uri.pathname.split("/")[0] || uri.host;
+    
+    if (!projectKnowledgeService) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: "Error: Project Knowledge Service not initialized",
+        }],
+      };
+    }
+    
+    const content = projectKnowledgeService.getProjectContext(projectId);
+    
+    if (!content) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: `No project context found for project "${projectId}". Run memorybank_initialize first.`,
+        }],
+      };
+    }
+    
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: "text/markdown",
+        text: content,
+      }],
+    };
+  }
+);
+
+// Resource: System Patterns
+server.resource(
+  "memory://*/patterns",
+  "Patrones de sistema: arquitectura, patrones de diseño y organización del código",
+  async (uri) => {
+    const projectId = uri.pathname.split("/")[0] || uri.host;
+    
+    if (!projectKnowledgeService) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: "Error: Project Knowledge Service not initialized",
+        }],
+      };
+    }
+    
+    const content = projectKnowledgeService.getProjectDocument(projectId, "systemPatterns");
+    
+    if (!content) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: `No system patterns found for project "${projectId}". Run memorybank_initialize or memorybank_generate_project_docs first.`,
+        }],
+      };
+    }
+    
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: "text/markdown",
+        text: content,
+      }],
+    };
+  }
+);
+
+// Resource: Project Brief
+server.resource(
+  "memory://*/brief",
+  "Descripción del proyecto: propósito, objetivos y audiencia",
+  async (uri) => {
+    const projectId = uri.pathname.split("/")[0] || uri.host;
+    
+    if (!projectKnowledgeService) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: "Error: Project Knowledge Service not initialized",
+        }],
+      };
+    }
+    
+    const content = projectKnowledgeService.getProjectDocument(projectId, "projectBrief");
+    
+    if (!content) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/plain",
+          text: `No project brief found for project "${projectId}". Run memorybank_initialize or memorybank_generate_project_docs first.`,
+        }],
+      };
+    }
+    
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: "text/markdown",
+        text: content,
+      }],
+    };
+  }
+);
+
 /**
  * Validates and initializes environment
  */
@@ -429,16 +868,29 @@ async function startStdioServer() {
     
     console.error("\n=== MCP Server Ready ===");
     console.error("Available tools:");
-    console.error("  Core Memory Bank:");
+    console.error("  Core Memory Bank (Cursor-style):");
     console.error("    - memorybank_index_code: Indexar código semánticamente");
     console.error("    - memorybank_search: Buscar código por similitud semántica");
     console.error("    - memorybank_read_file: Leer archivos del workspace");
     console.error("    - memorybank_write_file: Escribir archivos y reindexar");
     console.error("    - memorybank_get_stats: Obtener estadísticas del índice");
     console.error("    - memorybank_analyze_coverage: Analizar cobertura de indexación");
-    console.error("  Project Knowledge Layer:");
+    console.error("  Project Knowledge Layer (AI Docs):");
     console.error("    - memorybank_generate_project_docs: Generar documentación con IA");
     console.error("    - memorybank_get_project_docs: Leer documentación del proyecto");
+    console.error("  Context Management (Cline-style):");
+    console.error("    - memorybank_initialize: Inicializar Memory Bank para un proyecto");
+    console.error("    - memorybank_update_context: Actualizar contexto de sesión");
+    console.error("    - memorybank_record_decision: Registrar decisiones técnicas");
+    console.error("    - memorybank_track_progress: Actualizar progreso del proyecto");
+    console.error("");
+    console.error("Available resources:");
+    console.error("    - memory://{projectId}/active: Contexto activo");
+    console.error("    - memory://{projectId}/progress: Seguimiento de progreso");
+    console.error("    - memory://{projectId}/decisions: Log de decisiones");
+    console.error("    - memory://{projectId}/context: Contexto del proyecto");
+    console.error("    - memory://{projectId}/patterns: Patrones de sistema");
+    console.error("    - memory://{projectId}/brief: Descripción del proyecto");
     console.error("");
     console.error("Ready to accept requests...\n");
     
