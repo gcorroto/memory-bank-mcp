@@ -482,7 +482,7 @@ ${chunk.content}
   }
   
   /**
-   * Generates all project documents
+   * Generates all project documents (in parallel for speed)
    */
   async generateAllDocuments(
     chunks: ChunkRecord[],
@@ -498,34 +498,35 @@ ${chunk.content}
       errors: [],
     };
     
-    // Get previous progress if exists
+    // Get previous progress if exists (read before parallel generation)
     let previousProgress: string | undefined;
     const progressPath = path.join(this.options.docsPath, "progress.md");
     if (fs.existsSync(progressPath)) {
       previousProgress = fs.readFileSync(progressPath, "utf-8");
     }
     
-    // Define generation order (some docs may depend on others conceptually)
-    const docOrder: ProjectDocType[] = [
-      "techContext",      // Foundation - understand the tech stack first
-      "projectBrief",     // High-level overview
-      "systemPatterns",   // Architecture
-      "productContext",   // Business/user perspective
-      "activeContext",    // Current state
-      "progress",         // Progress tracking (last, uses previous data)
+    // Prepare chunks for activeContext (recent only)
+    const recentChunks = [...chunks]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, Math.min(30, chunks.length));
+    
+    // All document types to generate
+    const docTypes: ProjectDocType[] = [
+      "techContext",
+      "projectBrief",
+      "systemPatterns",
+      "productContext",
+      "activeContext",
+      "progress",
     ];
     
-    for (const docType of docOrder) {
+    console.error(`\n🚀 Generating ${docTypes.length} documents in PARALLEL...`);
+    
+    // Generate all documents in parallel
+    const generationPromises = docTypes.map(async (docType) => {
       try {
-        // For activeContext, use only recent chunks (by timestamp)
-        let docChunks = chunks;
-        
-        if (docType === "activeContext") {
-          // Sort by timestamp and take most recent
-          docChunks = [...chunks]
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, Math.min(30, chunks.length));
-        }
+        // For activeContext, use only recent chunks
+        const docChunks = docType === "activeContext" ? recentChunks : chunks;
         
         const existingMetadata = this.metadataCache.get(docType);
         const isNew = !existingMetadata;
@@ -537,24 +538,39 @@ ${chunk.content}
           docType === "progress" ? previousProgress : undefined
         );
         
-        if (doc) {
-          result.totalReasoningTokens += doc.metadata.reasoningTokens;
-          result.totalOutputTokens += doc.metadata.outputTokens;
-          
-          if (isNew) {
-            result.documentsGenerated.push(docType);
-          } else {
-            result.documentsUpdated.push(docType);
-          }
-        } else {
-          result.documentsSkipped.push(docType);
-        }
-      } catch (error: any) {
+        return { docType, doc, isNew, error: null };
+      } catch (error) {
+        return { docType, doc: null, isNew: false, error: error as Error };
+      }
+    });
+    
+    // Wait for all documents to complete
+    const results = await Promise.all(generationPromises);
+    
+    // Process results
+    for (const { docType, doc, isNew, error } of results) {
+      if (error) {
         console.error(`Error generating ${docType}: ${error.message}`);
         result.errors.push(`${docType}: ${error.message}`);
         result.success = false;
+        continue;
+      }
+      
+      if (doc) {
+        result.totalReasoningTokens += doc.metadata.reasoningTokens;
+        result.totalOutputTokens += doc.metadata.outputTokens;
+        
+        if (isNew) {
+          result.documentsGenerated.push(docType);
+        } else {
+          result.documentsUpdated.push(docType);
+        }
+      } else {
+        result.documentsSkipped.push(docType);
       }
     }
+    
+    console.error(`\n✅ Parallel generation complete: ${result.documentsGenerated.length + result.documentsUpdated.length} docs, ${result.totalReasoningTokens} reasoning + ${result.totalOutputTokens} output tokens`);
     
     return result;
   }
@@ -608,22 +624,24 @@ ${chunk.content}
       errors: [],
     };
     
-    // Get previous progress
+    // Get previous progress (read before parallel generation)
     let previousProgress: string | undefined;
     const progressPath = path.join(this.options.docsPath, "progress.md");
     if (fs.existsSync(progressPath)) {
       previousProgress = fs.readFileSync(progressPath, "utf-8");
     }
     
-    for (const docType of docsToUpdate) {
+    // Prepare recent chunks for activeContext
+    const recentChunks = [...chunks]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, Math.min(30, chunks.length));
+    
+    console.error(`\n🚀 Updating ${docsToUpdate.length} documents in PARALLEL...`);
+    
+    // Generate docs in parallel
+    const updatePromises = docsToUpdate.map(async (docType) => {
       try {
-        let docChunks = chunks;
-        
-        if (docType === "activeContext") {
-          docChunks = [...chunks]
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, Math.min(30, chunks.length));
-        }
+        const docChunks = docType === "activeContext" ? recentChunks : chunks;
         
         const existingMetadata = this.metadataCache.get(docType);
         const isNew = !existingMetadata;
@@ -635,22 +653,35 @@ ${chunk.content}
           docType === "progress" ? previousProgress : undefined
         );
         
-        if (doc) {
-          result.totalReasoningTokens += doc.metadata.reasoningTokens;
-          result.totalOutputTokens += doc.metadata.outputTokens;
-          
-          if (isNew) {
-            result.documentsGenerated.push(docType);
-          } else {
-            result.documentsUpdated.push(docType);
-          }
-        } else {
-          result.documentsSkipped.push(docType);
-        }
-      } catch (error: any) {
+        return { docType, doc, isNew, error: null };
+      } catch (error) {
+        return { docType, doc: null, isNew: false, error: error as Error };
+      }
+    });
+    
+    // Wait for all
+    const updateResults = await Promise.all(updatePromises);
+    
+    // Process results
+    for (const { docType, doc, isNew, error } of updateResults) {
+      if (error) {
         console.error(`Error updating ${docType}: ${error.message}`);
         result.errors.push(`${docType}: ${error.message}`);
         result.success = false;
+        continue;
+      }
+      
+      if (doc) {
+        result.totalReasoningTokens += doc.metadata.reasoningTokens;
+        result.totalOutputTokens += doc.metadata.outputTokens;
+        
+        if (isNew) {
+          result.documentsGenerated.push(docType);
+        } else {
+          result.documentsUpdated.push(docType);
+        }
+      } else {
+        result.documentsSkipped.push(docType);
       }
     }
     
