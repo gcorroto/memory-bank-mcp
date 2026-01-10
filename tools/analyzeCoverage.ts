@@ -59,7 +59,7 @@ export interface AnalyzeCoverageResult {
  */
 function buildDirectoryTree(
   files: FileMetadata[],
-  indexedFiles: Map<string, { lastIndexed: number; chunks: number }>,
+  indexedFiles: Map<string, { lastIndexed: number; chunks: number; hash: string }>,
   pendingFiles: Set<string>,
   rootPath: string
 ): DirectoryNode {
@@ -171,7 +171,7 @@ function buildDirectoryTree(
  */
 function calculateStats(
   files: FileMetadata[],
-  indexedFiles: Map<string, { lastIndexed: number; chunks: number }>,
+  indexedFiles: Map<string, { lastIndexed: number; chunks: number; hash: string }>,
   pendingFiles: Set<string>,
   totalChunks: number
 ): CoverageStats {
@@ -351,38 +351,43 @@ export async function analyzeCoverage(
       throw error;
     }
     
-    // 2. Get indexed files from vector store
-    console.error("Obteniendo archivos indexados...");
+    // 2. Get ALL chunks from vector store in ONE query (optimized)
+    console.error("Obteniendo todos los chunks indexados (query única)...");
     await vectorStore.initialize();
-    const fileHashes = await vectorStore.getFileHashes();
+    const queryStart = Date.now();
+    const allChunks = await vectorStore.getAllChunks(projectId);
+    console.error(`Query completada en ${Date.now() - queryStart}ms - ${allChunks.length} chunks`);
     
-    // 3. Get index metadata
-    const indexStats = await indexManager.getStats();
+    // 3. Build indexed files map from chunks (in memory - fast)
+    console.error("Procesando chunks en memoria...");
+    const indexedFiles = new Map<string, { lastIndexed: number; chunks: number; hash: string }>();
     
-    // 4. Build indexed files map with chunk counts
-    const indexedFiles = new Map<string, { lastIndexed: number; chunks: number }>();
-    
-    // Get chunks grouped by file from vector store
-    for (const [filePath, hash] of fileHashes) {
-      const chunks = await vectorStore.getChunksByFile(filePath);
-      if (chunks.length > 0) {
-        indexedFiles.set(filePath, {
-          lastIndexed: chunks[0].timestamp,
-          chunks: chunks.length,
+    for (const chunk of allChunks) {
+      const existing = indexedFiles.get(chunk.file_path);
+      if (!existing) {
+        indexedFiles.set(chunk.file_path, {
+          lastIndexed: chunk.timestamp,
+          chunks: 1,
+          hash: chunk.file_hash,
         });
+      } else {
+        existing.chunks++;
+        // Keep most recent timestamp
+        if (chunk.timestamp > existing.lastIndexed) {
+          existing.lastIndexed = chunk.timestamp;
+        }
       }
     }
     
-    // 5. Identify pending files (files that changed)
+    // 4. Get index stats
+    const indexStats = await indexManager.getStats();
+    
+    // 5. Identify pending files (files that changed) - in memory comparison
     const pendingFiles = new Set<string>();
     for (const file of allFiles) {
       const indexed = indexedFiles.get(file.path);
-      if (indexed) {
-        // Check if file hash matches
-        const chunks = await vectorStore.getChunksByFile(file.path);
-        if (chunks.length > 0 && chunks[0].file_hash !== file.hash) {
-          pendingFiles.add(file.path);
-        }
+      if (indexed && indexed.hash !== file.hash) {
+        pendingFiles.add(file.path);
       }
     }
     
