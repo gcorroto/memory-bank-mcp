@@ -238,12 +238,12 @@ server.tool(
 // Tool: Analyze Coverage
 server.tool(
   "memorybank_analyze_coverage",
-  `Analiza la cobertura de indexación del proyecto.
+  `Analiza la cobertura de indexación del proyecto. RÁPIDO (~2s).
 
 ⚠️ IMPORTANTE:
 - path debe ser RUTA ABSOLUTA al DIRECTORIO raíz del workspace
 - Ejemplo: "C:/workspaces/mi-proyecto" (NO rutas relativas)
-- Puede tardar en workspaces grandes`,
+- Por defecto NO incluye árbol de directorios (lento en proyectos grandes)`,
   {
     projectId: z
       .string()
@@ -251,11 +251,16 @@ server.tool(
     path: z
       .string()
       .describe("RUTA ABSOLUTA al directorio raíz del workspace. Ejemplo: 'C:/workspaces/mi-proyecto'"),
+    includeTree: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Incluir árbol de directorios detallado (LENTO en proyectos grandes, omitir normalmente)"),
   },
   async (args) => {
     try {
       const targetPath = args.path;
-      const result = await analyzeCoverage(indexManager, vectorStore, targetPath, args.projectId);
+      const result = await analyzeCoverage(indexManager, vectorStore, targetPath, args.projectId, args.includeTree);
       
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

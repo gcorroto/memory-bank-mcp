@@ -49,7 +49,7 @@ export interface CoverageStats {
 export interface AnalyzeCoverageResult {
   success: boolean;
   stats: CoverageStats;
-  tree: DirectoryNode;
+  tree?: DirectoryNode;  // Optional - can be slow for large projects
   recommendations: string[];
   message: string;
 }
@@ -248,7 +248,7 @@ function calculateStats(
  */
 function generateRecommendations(
   stats: CoverageStats,
-  tree: DirectoryNode
+  tree?: DirectoryNode
 ): string[] {
   const recommendations: string[] = [];
   
@@ -309,12 +309,14 @@ function generateRecommendations(
 
 /**
  * Analyzes indexation coverage of the project
+ * @param includeTree - Whether to include directory tree (slow for large projects, default false)
  */
 export async function analyzeCoverage(
   indexManager: IndexManager,
   vectorStore: VectorStore,
   workspaceRoot: string,
-  projectId?: string
+  projectId?: string,
+  includeTree: boolean = false
 ): Promise<AnalyzeCoverageResult> {
   try {
     console.error("\n=== Analizando cobertura de indexación ===");
@@ -394,13 +396,20 @@ export async function analyzeCoverage(
     console.error(`Archivos indexados: ${indexedFiles.size}`);
     console.error(`Archivos con cambios: ${pendingFiles.size}`);
     
-    // 6. Build directory tree
-    console.error("Construyendo árbol de directorios...");
-    const tree = buildDirectoryTree(allFiles, indexedFiles, pendingFiles, workspaceRoot);
-    
-    // 7. Calculate statistics
+    // 6. Calculate statistics (fast - in memory)
     console.error("Calculando estadísticas...");
     const stats = calculateStats(allFiles, indexedFiles, pendingFiles, indexStats.totalChunks);
+    
+    // 7. Build directory tree ONLY if requested (slow for large projects)
+    let tree: DirectoryNode | undefined;
+    if (includeTree) {
+      console.error("Construyendo árbol de directorios (solicitado explícitamente)...");
+      const treeStart = Date.now();
+      tree = buildDirectoryTree(allFiles, indexedFiles, pendingFiles, workspaceRoot);
+      console.error(`Árbol construido en ${Date.now() - treeStart}ms`);
+    } else {
+      console.error("Árbol de directorios omitido (usa includeTree: true si lo necesitas)");
+    }
     
     // 8. Generate recommendations
     const recommendations = generateRecommendations(stats, tree);
@@ -436,13 +445,6 @@ export async function analyzeCoverage(
         totalChunks: 0,
         languageBreakdown: {},
         directoryBreakdown: {},
-      },
-      tree: {
-        name: "root",
-        path: "",
-        type: "directory",
-        status: "not_indexed",
-        children: [],
       },
       recommendations: [],
       message: `Failed to analyze coverage: ${error}`,
