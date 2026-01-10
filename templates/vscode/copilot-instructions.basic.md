@@ -37,17 +37,26 @@ This project uses [Memory Bank MCP](https://github.com/gcorroto/memory-bank-mcp)
 | `memory://{{PROJECT_ID}}/decisions` | Decision log |
 | `memory://{{PROJECT_ID}}/context` | Project context |
 
-### CRITICAL: Always Consult Before Acting
+### ⚠️ CRITICAL: Always Search Before Acting (RAG)
+
+The Memory Bank is a **RAG system** that keeps your knowledge accurate and **prevents hallucinations**.
+
+**NEVER implement anything without first consulting the Memory Bank.**
 
 Before answering ANY question or making ANY code change, you MUST:
 
-1. **Search first**: Call `memorybank_search` with your question
+1. **SEARCH FIRST** (MANDATORY): Call `memorybank_search` with your question
 ```json
 {
   "projectId": "{{PROJECT_ID}}",
   "query": "your question in natural language"
 }
 ```
+
+Ask yourself:
+- ✅ Did I search for similar existing code?
+- ✅ Did I search for related patterns?
+- ✅ Did I search for potential dependencies?
 
 2. **Get project context** (for architecture/overview questions):
 ```json
@@ -63,6 +72,20 @@ Before answering ANY question or making ANY code change, you MUST:
   "path": "path/to/file.ts"
 }
 ```
+
+### First Time Setup
+
+If this is the first time working with this project, initialize the Memory Bank:
+```json
+// memorybank_initialize - Run once per project
+{
+  "projectId": "{{PROJECT_ID}}",
+  "projectPath": "{{WORKSPACE_PATH}}",
+  "projectName": "Project Name"
+}
+```
+
+This creates the context tracking documents. Skip if already initialized.
 
 ### Indexing Policy
 

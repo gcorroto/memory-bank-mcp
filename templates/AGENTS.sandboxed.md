@@ -11,10 +11,24 @@
 
 ⚠️ **IMPORTANT**: In this mode, you do NOT have direct access to the file system.
 
-You MUST use Memory Bank tools for ALL file operations:
+The Memory Bank is your **RAG system** (Retrieval-Augmented Generation) - it keeps your knowledge accurate and **prevents hallucinations**.
+
+### ⚠️ CRITICAL RULE: ALWAYS SEARCH BEFORE IMPLEMENTING
+
+**NEVER write code without first consulting the Memory Bank.**
+
+```json
+// memorybank_search - MANDATORY before ANY implementation
+{
+  "projectId": "{{PROJECT_ID}}",
+  "query": "how does [feature/component] work"
+}
+```
+
+You MUST use Memory Bank tools for ALL operations:
+- **Searching code**: `memorybank_search` ← **DO THIS FIRST, ALWAYS**
 - **Reading files**: `memorybank_read_file`
-- **Writing files**: `memorybank_write_file`
-- **Searching code**: `memorybank_search`
+- **Writing files**: `memorybank_write_file` (auto-reindexes)
 
 ### Available Tools
 
@@ -96,8 +110,28 @@ Note: `memorybank_write_file` automatically reindexes the file when `autoReindex
 
 At the beginning of each session:
 
-1. **Update session context**:
+1. **Initialize if first time** (only once per project):
    ```json
+   // memorybank_initialize - Run this if Memory Bank doesn't exist for this project
+   {
+     "projectId": "{{PROJECT_ID}}",
+     "projectPath": "{{WORKSPACE_PATH}}",
+     "projectName": "Project Name"
+   }
+   ```
+
+2. **Get current project status**:
+   ```json
+   // memorybank_get_project_docs
+   {
+     "projectId": "{{PROJECT_ID}}",
+     "document": "activeContext"
+   }
+   ```
+
+3. **Update session context**:
+   ```json
+   // memorybank_update_context
    {
      "projectId": "{{PROJECT_ID}}",
      "currentSession": {
@@ -107,16 +141,9 @@ At the beginning of each session:
    }
    ```
 
-2. **Get current project status**:
+4. **Get project documentation** (for context):
    ```json
-   {
-     "projectId": "{{PROJECT_ID}}",
-     "document": "activeContext"
-   }
-   ```
-
-3. **Get project documentation**:
-   ```json
+   // memorybank_get_project_docs
    {
      "projectId": "{{PROJECT_ID}}",
      "document": "summary"
@@ -139,11 +166,29 @@ flowchart TD
     I --> H
 ```
 
+### Before ANY Implementation
+
+**STOP. Did you search first?**
+
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "query": "existing implementation of [what you're about to implement]"
+}
+```
+
+Checklist:
+- ✅ Searched for similar existing code?
+- ✅ Searched for related patterns?
+- ✅ Searched for dependencies?
+- ✅ Understand how it fits in codebase?
+
 ### Standard Workflow Steps
 
-1. **Search**: `memorybank_search({ projectId: "{{PROJECT_ID}}", query: "..." })`
+1. **SEARCH FIRST** (MANDATORY): `memorybank_search({ projectId: "{{PROJECT_ID}}", query: "..." })`
    - Understand what exists
    - Find relevant code
+   - **Prevents hallucinations**
 
 2. **Context** (if needed): `memorybank_get_project_docs({ projectId: "{{PROJECT_ID}}" })`
    - Get architecture overview
@@ -155,7 +200,7 @@ flowchart TD
 
 4. **Write** (if modifying): `memorybank_write_file({ projectId: "{{PROJECT_ID}}", path: "...", content: "..." })`
    - Provide complete file content
-   - Auto-reindexes by default
+   - **Auto-reindexes** to keep RAG updated
 
 5. **Track**: `memorybank_track_progress({ projectId: "{{PROJECT_ID}}", progress: {...} })`
    - Update completed tasks

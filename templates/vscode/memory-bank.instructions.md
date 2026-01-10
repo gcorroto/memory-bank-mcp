@@ -56,7 +56,20 @@ This workspace uses [Memory Bank MCP](https://github.com/gcorroto/memory-bank-mc
 
 **ALWAYS include `projectId: "{{PROJECT_ID}}"` in every Memory Bank tool call.**
 
+## First Time Setup
+
+If this is the first time working with this project, initialize the Memory Bank:
+```json
+// memorybank_initialize - Run once per project
+{ "projectId": "{{PROJECT_ID}}", "projectPath": "{{WORKSPACE_PATH}}", "projectName": "Project Name" }
+```
+
 ## Quick Reference
+
+### Initialize (first time only)
+```json
+{ "projectId": "{{PROJECT_ID}}", "projectPath": "{{WORKSPACE_PATH}}" }
+```
 
 ### Search Code
 ```json
