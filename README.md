@@ -1,131 +1,131 @@
 # Memory Bank MCP - Semantic Code Indexing
 
-Servidor MCP (Model Context Protocol) para indexación semántica de código. Permite a agentes de IA como Claude, Copilot, Cursor y otros mantener una "memoria persistente" de bases de código completas mediante embeddings vectoriales y búsqueda semántica.
+MCP (Model Context Protocol) server for semantic code indexing. Enables AI agents like Claude, Copilot, Cursor, and others to maintain a "persistent memory" of entire codebases through vector embeddings and semantic search.
 
-## 🧠 ¿Qué es Memory Bank?
+## 🧠 What is Memory Bank?
 
-**Memory Bank** es un sistema de memoria externa para agentes de código que resuelve el problema fundamental de la pérdida de contexto en IAs. Funciona como el "cerebro externo" del proyecto:
+**Memory Bank** is an external memory system for code agents that solves the fundamental problem of context loss in AIs. It works as the project's "external brain":
 
-- **Indexa** todo tu código usando embeddings de OpenAI
-- **Fragmenta** inteligentemente usando parsing AST (funciones, clases, métodos)
-- **Almacena** vectores en LanceDB para búsquedas ultrarrápidas
-- **Busca** semánticamente: pregunta en lenguaje natural, obtén código relevante
-- **Actualiza** incrementalmente: solo reindexa archivos modificados
-- **Multi-proyecto**: consulta código de cualquier proyecto indexado desde cualquier workspace
+- **Indexes** all your code using OpenAI embeddings
+- **Chunks** intelligently using AST parsing (functions, classes, methods)
+- **Stores** vectors in LanceDB for ultra-fast searches
+- **Searches** semantically: ask in natural language, get relevant code
+- **Updates** incrementally: only reindexes modified files
+- **Multi-project**: query code from any indexed project from any workspace
 
-### ¿Por qué lo necesitas?
+### Why do you need it?
 
-Sin Memory Bank, las IAs:
-- ❌ Olvidan todo entre sesiones
-- ❌ Solo ven fragmentos pequeños de código
-- ❌ Alucinan implementaciones inexistentes  
-- ❌ Dan respuestas genéricas sin contexto
+Without Memory Bank, AIs:
+- ❌ Forget everything between sessions
+- ❌ Only see small code snippets
+- ❌ Hallucinate non-existent implementations
+- ❌ Give generic answers without context
 
-Con Memory Bank, las IAs:
-- ✅ Recuerdan toda la base de código
-- ✅ Entienden arquitectura y patrones
-- ✅ Responden con código real del proyecto
-- ✅ Generan código consistente con tu estilo
-- ✅ **Consultan múltiples proyectos** indexados simultáneamente
+With Memory Bank, AIs:
+- ✅ Remember the entire codebase
+- ✅ Understand architecture and patterns
+- ✅ Respond with real project code
+- ✅ Generate code consistent with your style
+- ✅ **Query multiple indexed projects** simultaneously
 
-## 🚀 Características
+## 🚀 Features
 
-### Core Memory Bank (Búsqueda Precisa)
-- **🔍 Búsqueda Semántica**: Pregunta "¿cómo funciona la autenticación?" y obtén código relevante
-- **🧩 Chunking Inteligente**: AST parsing para TS/JS/Python con límites de tokens (8192 máx)
-- **⚡ Actualización Incremental**: Solo reindexa archivos modificados (detección por hash)
-- **💾 Cache de Embeddings**: Evita regenerar embeddings innecesariamente
-- **🎯 Filtros Avanzados**: Por archivo, lenguaje, tipo de chunk
-- **📊 Estadísticas Detalladas**: Conoce el estado de tu índice en todo momento
-- **🔒 Privacidad**: Vector store local, respeta .gitignore y .memoryignore
-- **🔀 Multi-Proyecto**: Consulta cualquier proyecto indexado usando su `projectId`
+### Core Memory Bank (Precise Search)
+- **🔍 Semantic Search**: Ask "how does authentication work?" and get relevant code
+- **🧩 Intelligent Chunking**: AST parsing for TS/JS/Python with token limits (8192 max)
+- **⚡ Incremental Updates**: Only reindexes modified files (hash-based detection)
+- **💾 Embedding Cache**: Avoids regenerating embeddings unnecessarily
+- **🎯 Advanced Filters**: By file, language, chunk type
+- **📊 Detailed Statistics**: Know the state of your index at all times
+- **🔒 Privacy**: Local vector store, respects .gitignore and .memoryignore
+- **🔀 Multi-Project**: Query any indexed project using its `projectId`
 
-### Project Knowledge Layer (Conocimiento Global)
-- **📄 Documentación Automática**: Genera 6 documentos markdown estructurados del proyecto
-- **🧠 IA con Razonamiento**: Usa OpenAI Responses API con modelos de razonamiento (gpt-5-mini)
-- **🔄 Actualización Inteligente**: Solo regenera documentos afectados por cambios
-- **📚 Contexto Global**: Complementa búsqueda precisa con visión de alto nivel
+### Project Knowledge Layer (Global Knowledge)
+- **📄 Automatic Documentation**: Generates 6 structured markdown documents about the project
+- **🧠 AI with Reasoning**: Uses OpenAI Responses API with reasoning models (gpt-5-mini)
+- **🔄 Smart Updates**: Only regenerates documents affected by changes
+- **📚 Global Context**: Complements precise search with high-level vision
 
-### Context Management (Gestión de Sesión) 🆕
-- **🚀 Inicialización Rápida**: Crea estructura de Memory Bank con plantillas iniciales (sin IA)
-- **📝 Tracking de Sesión**: Registra contexto activo, cambios recientes y próximos pasos
-- **📋 Log de Decisiones**: Documenta decisiones técnicas con rationale y alternativas
-- **📊 Seguimiento de Progreso**: Gestiona tareas, milestones y blockers
-- **📡 MCP Resources**: Acceso directo de solo lectura a documentos via URIs
+### Context Management (Session Management) 🆕
+- **🚀 Quick Initialization**: Creates Memory Bank structure with initial templates (no AI)
+- **📝 Session Tracking**: Records active context, recent changes, and next steps
+- **📋 Decision Log**: Documents technical decisions with rationale and alternatives
+- **📊 Progress Tracking**: Manages tasks, milestones, and blockers
+- **📡 MCP Resources**: Direct read-only access to documents via URIs
 
-## 📋 Requisitos
+## 📋 Requirements
 
 - **Node.js** >= 18.0.0
-- **OpenAI API Key**: [Obtener aquí](https://platform.openai.com/api-keys)
-- **Espacio en disco**: ~10MB por cada 10,000 archivos (embeddings + metadata)
+- **OpenAI API Key**: [Get one here](https://platform.openai.com/api-keys)
+- **Disk space**: ~10MB per 10,000 files (embeddings + metadata)
 
-## 🛠️ Instalación
+## 🛠️ Installation
 
-### Opción 1: NPX (Recomendado)
+### Option 1: NPX (Recommended)
 
-La forma más fácil de usar Memory Bank MCP sin instalación local:
+The easiest way to use Memory Bank MCP without local installation:
 
 ```bash
 npx @grec0/memory-bank-mcp@latest
 ```
 
-### Opción 2: Instalación Local
+### Option 2: Local Installation
 
-Para desarrollo o contribución:
+For development or contribution:
 
 ```bash
-# Clonar repositorio
+# Clone repository
 git clone https://github.com/gcorroto/memory-bank-mcp.git
 cd memory-bank-mcp
 
-# Instalar dependencias
+# Install dependencies
 npm install
 
-# Compilar
+# Build
 npm run build
 
-# Ejecutar
+# Run
 npm run start
 ```
 
-## ⚙️ Configuración Completa
+## ⚙️ Complete Configuration
 
-### Variables de Entorno
+### Environment Variables
 
-Memory Bank se configura mediante variables de entorno. Puedes configurarlas en tu cliente MCP o en un archivo `.env`:
+Memory Bank is configured through environment variables. You can set them in your MCP client or in a `.env` file:
 
-#### Variables Requeridas
+#### Required Variables
 
-| Variable | Descripción |
+| Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | **REQUERIDO**. Tu API key de OpenAI |
+| `OPENAI_API_KEY` | **REQUIRED**. Your OpenAI API key |
 
-#### Variables de Indexación
+#### Indexing Variables
 
-| Variable | Default | Descripción |
+| Variable | Default | Description |
 |----------|---------|-------------|
-| `MEMORYBANK_STORAGE_PATH` | `.memorybank` | Directorio donde se almacena el índice vectorial |
-| `MEMORYBANK_WORKSPACE_ROOT` | `process.cwd()` | Raíz del workspace (se auto-detecta normalmente) |
-| `MEMORYBANK_EMBEDDING_MODEL` | `text-embedding-3-small` | Modelo de embeddings de OpenAI |
-| `MEMORYBANK_EMBEDDING_DIMENSIONS` | `1536` | Dimensiones del vector (1536 o 512) |
-| `MEMORYBANK_MAX_TOKENS` | `7500` | Tokens máximos por chunk (límite: 8192) |
-| `MEMORYBANK_CHUNK_OVERLAP_TOKENS` | `200` | Solapamiento entre chunks para mantener contexto |
+| `MEMORYBANK_STORAGE_PATH` | `.memorybank` | Directory where the vector index is stored |
+| `MEMORYBANK_WORKSPACE_ROOT` | `process.cwd()` | Workspace root (usually auto-detected) |
+| `MEMORYBANK_EMBEDDING_MODEL` | `text-embedding-3-small` | OpenAI embedding model |
+| `MEMORYBANK_EMBEDDING_DIMENSIONS` | `1536` | Vector dimensions (1536 or 512) |
+| `MEMORYBANK_MAX_TOKENS` | `7500` | Maximum tokens per chunk (limit: 8192) |
+| `MEMORYBANK_CHUNK_OVERLAP_TOKENS` | `200` | Overlap between chunks to maintain context |
 
-#### Variables del Project Knowledge Layer
+#### Project Knowledge Layer Variables
 
-| Variable | Default | Descripción |
+| Variable | Default | Description |
 |----------|---------|-------------|
-| `MEMORYBANK_REASONING_MODEL` | `gpt-5-mini` | Modelo para generar documentación (soporta reasoning) |
-| `MEMORYBANK_REASONING_EFFORT` | `medium` | Nivel de razonamiento: `low`, `medium`, `high` |
-| `MEMORYBANK_AUTO_UPDATE_DOCS` | `false` | Auto-regenerar docs cuando se indexa código |
+| `MEMORYBANK_REASONING_MODEL` | `gpt-5-mini` | Model for generating documentation (supports reasoning) |
+| `MEMORYBANK_REASONING_EFFORT` | `medium` | Reasoning level: `low`, `medium`, `high` |
+| `MEMORYBANK_AUTO_UPDATE_DOCS` | `false` | Auto-regenerate docs when indexing code |
 
-### Configuración en Cursor IDE
+### Configuration in Cursor IDE
 
-Edita tu archivo de configuración de MCP:
+Edit your MCP configuration file:
 
 **Windows**: `%APPDATA%\Cursor\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json`
 
-#### Configuración Mínima
+#### Minimal Configuration
 
 ```json
 {
@@ -142,7 +142,7 @@ Edita tu archivo de configuración de MCP:
 }
 ```
 
-#### Configuración Completa (Recomendada)
+#### Complete Configuration (Recommended)
 
 ```json
 {
@@ -166,7 +166,7 @@ Edita tu archivo de configuración de MCP:
 }
 ```
 
-### Configuración en Claude Desktop
+### Configuration in Claude Desktop
 
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`  
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
@@ -188,15 +188,15 @@ Edita tu archivo de configuración de MCP:
 }
 ```
 
-### Configuración con Instalación Local
+### Configuration with Local Installation
 
 ```json
 {
   "mcpServers": {
     "memory-bank": {
       "command": "node",
-      "args": ["/ruta/absoluta/memory-bank-mcp/dist/index.js"],
-      "cwd": "/ruta/absoluta/memory-bank-mcp",
+      "args": ["/absolute/path/memory-bank-mcp/dist/index.js"],
+      "cwd": "/absolute/path/memory-bank-mcp",
       "env": {
         "OPENAI_API_KEY": "sk-your-api-key-here"
       }
@@ -207,35 +207,35 @@ Edita tu archivo de configuración de MCP:
 
 ---
 
-## 📄 Sistema de Documentación del Proyecto (Project Knowledge Layer)
+## 📄 Project Documentation System (Project Knowledge Layer)
 
-Memory Bank incluye un sistema inteligente de documentación que genera y mantiene conocimiento estructurado sobre tu proyecto usando IA con capacidades de razonamiento.
+Memory Bank includes an intelligent documentation system that generates and maintains structured knowledge about your project using AI with reasoning capabilities.
 
-### ¿Cómo Funciona?
+### How Does It Work?
 
-1. **Análisis del Código**: El sistema analiza el código indexado usando búsqueda semántica
-2. **Generación con IA**: Usa modelos con razonamiento (gpt-5-mini) para generar documentación estructurada
-3. **Actualización Incremental**: Solo regenera documentos afectados cuando hay cambios significativos
-4. **Almacenamiento Persistente**: Los documentos se guardan en `.memorybank/projects/{projectId}/docs/`
+1. **Code Analysis**: The system analyzes indexed code using semantic search
+2. **AI Generation**: Uses reasoning models (gpt-5-mini) to generate structured documentation
+3. **Incremental Updates**: Only regenerates documents affected by significant changes
+4. **Persistent Storage**: Documents are saved in `.memorybank/projects/{projectId}/docs/`
 
-### Documentos Generados
+### Generated Documents
 
-El sistema genera **6 documentos markdown** que proporcionan diferentes perspectivas del proyecto:
+The system generates **6 markdown documents** that provide different perspectives of the project:
 
-| Documento | Propósito | Contenido |
-|-----------|-----------|-----------|
-| `projectBrief.md` | **Descripción General** | Qué es el proyecto, su propósito principal, funcionalidades clave |
-| `productContext.md` | **Perspectiva de Negocio** | Por qué existe, problemas que resuelve, usuarios objetivo, UX |
-| `systemPatterns.md` | **Arquitectura y Patrones** | Estructura del código, patrones de diseño, decisiones técnicas |
-| `techContext.md` | **Stack Tecnológico** | Tecnologías, dependencias, configuraciones, integraciones |
-| `activeContext.md` | **Estado Actual** | En qué se está trabajando, cambios recientes, próximos pasos |
-| `progress.md` | **Seguimiento** | Historial de cambios, qué funciona, qué falta, problemas conocidos |
+| Document | Purpose | Content |
+|----------|---------|---------|
+| `projectBrief.md` | **General Description** | What the project is, its main purpose, key features |
+| `productContext.md` | **Business Perspective** | Why it exists, problems it solves, target users, UX |
+| `systemPatterns.md` | **Architecture and Patterns** | Code structure, design patterns, technical decisions |
+| `techContext.md` | **Tech Stack** | Technologies, dependencies, configurations, integrations |
+| `activeContext.md` | **Current State** | What's being worked on, recent changes, next steps |
+| `progress.md` | **Tracking** | Change history, what works, what's missing, known issues |
 
-### Herramientas de Documentación
+### Documentation Tools
 
 #### `memorybank_generate_project_docs`
 
-Genera o regenera la documentación del proyecto.
+Generates or regenerates project documentation.
 
 ```json
 {
@@ -244,27 +244,27 @@ Genera o regenera la documentación del proyecto.
 }
 ```
 
-- `projectId` **(REQUERIDO)**: ID del proyecto
-- `force` (opcional): `true` para regenerar todo, `false` para actualizar incrementalmente
+- `projectId` **(REQUIRED)**: Project ID
+- `force` (optional): `true` to regenerate everything, `false` for incremental updates
 
 #### `memorybank_get_project_docs`
 
-Lee la documentación generada.
+Reads generated documentation.
 
 ```json
-// Obtener resumen de todos los documentos
+// Get summary of all documents
 {
   "projectId": "my-project",
   "document": "summary"
 }
 
-// Obtener documento específico
+// Get specific document
 {
   "projectId": "my-project",
   "document": "systemPatterns"
 }
 
-// Obtener todos los documentos completos
+// Get all complete documents
 {
   "projectId": "my-project",
   "document": "all",
@@ -272,99 +272,99 @@ Lee la documentación generada.
 }
 ```
 
-### Flujo de Trabajo con Documentación
+### Documentation Workflow
 
 ```
-1. Indexar código
+1. Index code
    memorybank_index_code({ projectId: "my-project" })
 
-2. Generar documentación
+2. Generate documentation
    memorybank_generate_project_docs({ projectId: "my-project" })
 
-3. Consultar documentación al inicio de cada sesión
+3. Query documentation at the start of each session
    memorybank_get_project_docs({ projectId: "my-project", document: "activeContext" })
 
-4. Buscar código específico
+4. Search specific code
    memorybank_search({ projectId: "my-project", query: "..." })
 ```
 
-### Auto-Actualización de Documentación
+### Auto-Update Documentation
 
-Si configuras `MEMORYBANK_AUTO_UPDATE_DOCS=true`, los documentos se regenerarán automáticamente después de cada indexación. Esto es útil para mantener la documentación siempre actualizada pero consume más tokens de API.
+If you configure `MEMORYBANK_AUTO_UPDATE_DOCS=true`, documents will be automatically regenerated after each indexing. This is useful for keeping documentation always up to date but consumes more API tokens.
 
 ---
 
-## 🔀 Multi-Proyecto: Consultas Entre Proyectos
+## 🔀 Multi-Project: Cross-Project Queries
 
-Una característica poderosa de Memory Bank es la capacidad de **consultar cualquier proyecto indexado desde cualquier workspace**.
+A powerful feature of Memory Bank is the ability to **query any indexed project from any workspace**.
 
-### ¿Cómo Funciona?
+### How Does It Work?
 
-Todos los proyectos indexados se almacenan en un vector store compartido, identificados por su `projectId`. Esto significa que:
+All indexed projects are stored in a shared vector store, identified by their `projectId`. This means:
 
-1. **Puedes trabajar en el Proyecto A** y consultar código del Proyecto B
-2. **Los agentes pueden aprender** de proyectos similares ya indexados
-3. **Reutiliza patrones** de otros proyectos de tu organización
+1. **You can work on Project A** and query code from Project B
+2. **Agents can learn** from similar already-indexed projects
+3. **Reuse patterns** from other projects in your organization
 
-### Ejemplo de Uso
+### Usage Example
 
 ```
-# Estás trabajando en "frontend-app" pero necesitas ver cómo se hizo algo en "backend-api"
+# You're working on "frontend-app" but need to see how something was done in "backend-api"
 
-Usuario: ¿Cómo se implementó la autenticación en el proyecto backend-api?
+User: How was authentication implemented in the backend-api project?
 
-Agente: [ejecuta memorybank_search({ 
-  projectId: "backend-api",  // Otro proyecto
-  query: "autenticación JWT middleware"
+Agent: [executes memorybank_search({ 
+  projectId: "backend-api",  // Another project
+  query: "JWT middleware authentication"
 })]
 
-Encontré la implementación en backend-api:
-- El middleware de auth está en src/middleware/auth.ts
-- Usa JWT con refresh tokens
-- La validación se hace con jsonwebtoken...
+Found the implementation in backend-api:
+- The auth middleware is in src/middleware/auth.ts
+- Uses JWT with refresh tokens
+- Validation is done with jsonwebtoken...
 ```
 
-### Requisitos para Multi-Proyecto
+### Requirements for Multi-Project
 
-1. **El proyecto debe estar indexado** previamente con su `projectId`
-2. **Usa el projectId correcto** al hacer consultas
-3. **La documentación es independiente** por proyecto
+1. **The project must be previously indexed** with its `projectId`
+2. **Use the correct projectId** when making queries
+3. **Documentation is independent** per project
 
-### Ejemplo Real: Dos Proyectos Relacionados
+### Real Example: Two Related Projects
 
 ```json
-// Proyecto 1: a2a_gateway (ya indexado)
+// Project 1: a2a_gateway (already indexed)
 memorybank_search({
   "projectId": "a2a_gateway",
-  "query": "cómo se registran los agentes"
+  "query": "how agents are registered"
 })
 
-// Proyecto 2: GREC0AI (workspace actual)
+// Project 2: GREC0AI (current workspace)
 memorybank_search({
   "projectId": "GREC0AI", 
-  "query": "implementación de AgentEntity"
+  "query": "AgentEntity implementation"
 })
 
-// Puedes consultar ambos en la misma sesión!
+// You can query both in the same session!
 ```
 
 ---
 
-## 📚 Herramientas Disponibles
+## 📚 Available Tools
 
-> **⚠️ IMPORTANTE**: Todas las herramientas requieren `projectId` obligatorio. Este ID debe coincidir con el definido en tu archivo `AGENTS.md`.
+> **⚠️ IMPORTANT**: All tools require mandatory `projectId`. This ID must match the one defined in your `AGENTS.md` file.
 
 ### `memorybank_index_code`
 
-Indexa código semánticamente para permitir búsquedas.
+Indexes code semantically to enable searches.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador único del proyecto
-- `path` (opcional): Ruta relativa o absoluta (default: raíz del workspace)
-- `recursive` (opcional): Indexar subdirectorios (default: true)
-- `forceReindex` (opcional): Forzar reindexación completa (default: false)
+**Parameters:**
+- `projectId` **(REQUIRED)**: Unique project identifier
+- `path` (optional): Relative or absolute path (default: workspace root)
+- `recursive` (optional): Index subdirectories (default: true)
+- `forceReindex` (optional): Force complete reindexing (default: false)
 
-**Ejemplo:**
+**Example:**
 ```json
 {
   "projectId": "my-project",
@@ -375,21 +375,21 @@ Indexa código semánticamente para permitir búsquedas.
 
 ### `memorybank_search`
 
-Busca código por similitud semántica.
+Searches code by semantic similarity.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador del proyecto donde buscar
-- `query` (requerido): Consulta en lenguaje natural
-- `topK` (opcional): Número de resultados (default: 10)
-- `minScore` (opcional): Score mínimo 0-1 (default: 0.4)
-- `filterByFile` (opcional): Filtrar por patrón de archivo
-- `filterByLanguage` (opcional): Filtrar por lenguaje
+**Parameters:**
+- `projectId` **(REQUIRED)**: Project identifier to search in
+- `query` (required): Natural language query
+- `topK` (optional): Number of results (default: 10)
+- `minScore` (optional): Minimum score 0-1 (default: 0.4)
+- `filterByFile` (optional): Filter by file pattern
+- `filterByLanguage` (optional): Filter by language
 
-**Ejemplo:**
+**Example:**
 ```json
 {
   "projectId": "my-project",
-  "query": "función que autentica usuarios con JWT",
+  "query": "function that authenticates users with JWT",
   "topK": 5,
   "minScore": 0.8
 }
@@ -397,36 +397,36 @@ Busca código por similitud semántica.
 
 ### `memorybank_read_file`
 
-Lee contenido de un archivo.
+Reads file contents.
 
-**Parámetros:**
-- `path` (requerido): Ruta del archivo
-- `startLine` (opcional): Línea inicial
-- `endLine` (opcional): Línea final
+**Parameters:**
+- `path` (required): File path
+- `startLine` (optional): Start line
+- `endLine` (optional): End line
 
 ### `memorybank_write_file`
 
-Escribe un archivo y lo reindexa automáticamente.
+Writes a file and automatically reindexes it.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador del proyecto para reindexación
-- `path` (requerido): Ruta del archivo
-- `content` (requerido): Contenido del archivo
-- `autoReindex` (opcional): Auto-reindexar (default: true)
+**Parameters:**
+- `projectId` **(REQUIRED)**: Project identifier for reindexing
+- `path` (required): File path
+- `content` (required): File content
+- `autoReindex` (optional): Auto-reindex (default: true)
 
 ### `memorybank_get_stats`
 
-Obtiene estadísticas del Memory Bank.
+Gets Memory Bank statistics.
 
 ### `memorybank_analyze_coverage`
 
-Analiza la cobertura de indexación del proyecto.
+Analyzes project indexing coverage.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador del proyecto a analizar
-- `path` **(REQUERIDO)**: Ruta absoluta del workspace a analizar
+**Parameters:**
+- `projectId` **(REQUIRED)**: Project identifier to analyze
+- `path` **(REQUIRED)**: Absolute workspace path to analyze
 
-**Ejemplo:**
+**Example:**
 ```json
 {
   "projectId": "my-project",
@@ -436,38 +436,38 @@ Analiza la cobertura de indexación del proyecto.
 
 ### `memorybank_generate_project_docs`
 
-Genera documentación estructurada del proyecto usando IA con razonamiento.
+Generates structured project documentation using AI with reasoning.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador del proyecto
-- `force` (opcional): Forzar regeneración (default: false)
+**Parameters:**
+- `projectId` **(REQUIRED)**: Project identifier
+- `force` (optional): Force regeneration (default: false)
 
 ### `memorybank_get_project_docs`
 
-Lee la documentación del proyecto generada por IA.
+Reads AI-generated project documentation.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador del proyecto
-- `document` (opcional): `"summary"`, `"all"`, o nombre específico (`projectBrief`, `systemPatterns`, etc.)
-- `format` (opcional): `"full"` o `"summary"` (default: "full")
+**Parameters:**
+- `projectId` **(REQUIRED)**: Project identifier
+- `document` (optional): `"summary"`, `"all"`, or specific name (`projectBrief`, `systemPatterns`, etc.)
+- `format` (optional): `"full"` or `"summary"` (default: "full")
 
 ---
 
-## 🔄 Herramientas de Gestión de Contexto (Cline-style)
+## 🔄 Context Management Tools (Cline-style)
 
-Estas herramientas permiten gestionar el contexto del proyecto de forma manual, complementando la generación automática con IA.
+These tools allow managing project context manually, complementing automatic AI generation.
 
 ### `memorybank_initialize`
 
-Inicializa el Memory Bank para un proyecto nuevo. Crea la estructura de directorios y 7 documentos markdown con plantillas iniciales. **No usa IA**.
+Initializes Memory Bank for a new project. Creates directory structure and 7 markdown documents with initial templates. **Does not use AI**.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador único del proyecto
-- `projectPath` **(REQUERIDO)**: Ruta absoluta del proyecto
-- `projectName` (opcional): Nombre legible del proyecto
-- `description` (opcional): Descripción inicial del proyecto
+**Parameters:**
+- `projectId` **(REQUIRED)**: Unique project identifier
+- `projectPath` **(REQUIRED)**: Absolute project path
+- `projectName` (optional): Human-readable project name
+- `description` (optional): Initial project description
 
-**Ejemplo:**
+**Example:**
 ```json
 {
   "projectId": "my-project",
@@ -477,28 +477,28 @@ Inicializa el Memory Bank para un proyecto nuevo. Crea la estructura de director
 }
 ```
 
-**Documentos creados:**
-- `projectBrief.md` - Descripción general
-- `productContext.md` - Contexto de producto
-- `systemPatterns.md` - Patrones de arquitectura
-- `techContext.md` - Stack tecnológico
-- `activeContext.md` - Contexto de sesión
-- `progress.md` - Seguimiento de progreso
-- `decisionLog.md` - Log de decisiones
+**Created documents:**
+- `projectBrief.md` - General description
+- `productContext.md` - Product context
+- `systemPatterns.md` - Architecture patterns
+- `techContext.md` - Tech stack
+- `activeContext.md` - Session context
+- `progress.md` - Progress tracking
+- `decisionLog.md` - Decision log
 
 ### `memorybank_update_context`
 
-Actualiza el contexto activo con información de la sesión actual. Mantiene historial de las últimas 10 sesiones. **No usa IA**.
+Updates active context with current session information. Maintains history of the last 10 sessions. **Does not use AI**.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador del proyecto
-- `currentSession` (opcional): Información de sesión (date, mode, task)
-- `recentChanges` (opcional): Lista de cambios recientes
-- `openQuestions` (opcional): Preguntas pendientes
-- `nextSteps` (opcional): Próximos pasos planificados
-- `notes` (opcional): Notas adicionales
+**Parameters:**
+- `projectId` **(REQUIRED)**: Project identifier
+- `currentSession` (optional): Session information (date, mode, task)
+- `recentChanges` (optional): List of recent changes
+- `openQuestions` (optional): Pending questions
+- `nextSteps` (optional): Planned next steps
+- `notes` (optional): Additional notes
 
-**Ejemplo:**
+**Example:**
 ```json
 {
   "projectId": "my-project",
@@ -513,19 +513,19 @@ Actualiza el contexto activo con información de la sesión actual. Mantiene his
 
 ### `memorybank_record_decision`
 
-Registra decisiones técnicas con rationale en el log de decisiones. **No usa IA**.
+Records technical decisions with rationale in the decision log. **Does not use AI**.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador del proyecto
-- `decision` **(REQUERIDO)**: Objeto con información de la decisión
-  - `title` **(REQUERIDO)**: Título de la decisión
-  - `description` **(REQUERIDO)**: Qué se decidió
-  - `rationale` **(REQUERIDO)**: Por qué se tomó esta decisión
-  - `alternatives` (opcional): Alternativas consideradas
-  - `impact` (opcional): Impacto esperado
-  - `category` (opcional): architecture, technology, dependencies, etc.
+**Parameters:**
+- `projectId` **(REQUIRED)**: Project identifier
+- `decision` **(REQUIRED)**: Object with decision information
+  - `title` **(REQUIRED)**: Decision title
+  - `description` **(REQUIRED)**: What was decided
+  - `rationale` **(REQUIRED)**: Why this decision was made
+  - `alternatives` (optional): Considered alternatives
+  - `impact` (optional): Expected impact
+  - `category` (optional): architecture, technology, dependencies, etc.
 
-**Ejemplo:**
+**Example:**
 ```json
 {
   "projectId": "my-project",
@@ -541,21 +541,21 @@ Registra decisiones técnicas con rationale en el log de decisiones. **No usa IA
 
 ### `memorybank_track_progress`
 
-Actualiza el seguimiento de progreso con tareas, milestones y blockers. **No usa IA**.
+Updates progress tracking with tasks, milestones, and blockers. **Does not use AI**.
 
-**Parámetros:**
-- `projectId` **(REQUERIDO)**: Identificador del proyecto
-- `progress` (opcional): Tareas a actualizar
-  - `completed`: Tareas completadas
-  - `inProgress`: Tareas en progreso
-  - `blocked`: Tareas bloqueadas
-  - `upcoming`: Próximas tareas
-- `milestone` (opcional): Milestone a añadir/actualizar (name, status, targetDate, notes)
-- `blockers` (opcional): Lista de blockers con severidad (low/medium/high)
-- `phase` (opcional): Fase actual del proyecto
-- `phaseStatus` (opcional): Estado de la fase
+**Parameters:**
+- `projectId` **(REQUIRED)**: Project identifier
+- `progress` (optional): Tasks to update
+  - `completed`: Completed tasks
+  - `inProgress`: Tasks in progress
+  - `blocked`: Blocked tasks
+  - `upcoming`: Upcoming tasks
+- `milestone` (optional): Milestone to add/update (name, status, targetDate, notes)
+- `blockers` (optional): List of blockers with severity (low/medium/high)
+- `phase` (optional): Current project phase
+- `phaseStatus` (optional): Phase status
 
-**Ejemplo:**
+**Example:**
 ```json
 {
   "projectId": "my-project",
@@ -574,148 +574,148 @@ Actualiza el seguimiento de progreso con tareas, milestones y blockers. **No usa
 
 ---
 
-## 📡 MCP Resources (Acceso Directo)
+## 📡 MCP Resources (Direct Access)
 
-Memory Bank expone recursos MCP para acceso directo de solo lectura a los documentos del proyecto.
+Memory Bank exposes MCP resources for direct read-only access to project documents.
 
-| Resource URI | Contenido |
-|--------------|-----------|
-| `memory://{projectId}/active` | Contexto activo de sesión |
-| `memory://{projectId}/progress` | Seguimiento de progreso |
-| `memory://{projectId}/decisions` | Log de decisiones técnicas |
-| `memory://{projectId}/context` | Contexto del proyecto (brief + tech) |
-| `memory://{projectId}/patterns` | Patrones de sistema |
-| `memory://{projectId}/brief` | Descripción del proyecto |
+| Resource URI | Content |
+|--------------|---------|
+| `memory://{projectId}/active` | Active session context |
+| `memory://{projectId}/progress` | Progress tracking |
+| `memory://{projectId}/decisions` | Technical decision log |
+| `memory://{projectId}/context` | Project context (brief + tech) |
+| `memory://{projectId}/patterns` | System patterns |
+| `memory://{projectId}/brief` | Project description |
 
-**Ejemplo de uso:**
+**Usage example:**
 ```
-// Acceder al contexto activo del proyecto "my-project"
+// Access active context for "my-project"
 memory://my-project/active
 
-// Acceder al log de decisiones
+// Access decision log
 memory://my-project/decisions
 ```
 
-Los recursos son de solo lectura. Para modificar documentos, usa las herramientas correspondientes (`memorybank_update_context`, `memorybank_record_decision`, etc.).
+Resources are read-only. To modify documents, use the corresponding tools (`memorybank_update_context`, `memorybank_record_decision`, etc.).
 
 ---
 
-## 📋 Plantillas de Instrucciones para Agentes
+## 📋 Agent Instruction Templates
 
-Memory Bank incluye plantillas de instrucciones en dos formatos para configurar el comportamiento del agente:
+Memory Bank includes instruction templates in two formats to configure agent behavior:
 
-- **AGENTS.md** - Estándar [agents.md](https://agents.md/) (compatible con Claude, Cursor, múltiples agentes)
-- **VSCode/Copilot** - Formato `.github/copilot-instructions.md` para GitHub Copilot en VS Code
+- **AGENTS.md** - Standard [agents.md](https://agents.md/) (compatible with Claude, Cursor, multiple agents)
+- **VSCode/Copilot** - `.github/copilot-instructions.md` format for GitHub Copilot in VS Code
 
-### Modos Disponibles
+### Available Modes
 
-| Modo | Archivo | Uso Ideal |
-|------|---------|-----------|
-| **Basic** | `AGENTS.basic.md` | Control total, indexación manual |
-| **Auto-Index** | `AGENTS.auto-index.md` | Desarrollo activo, sincronización automática |
-| **Sandboxed** | `AGENTS.sandboxed.md` | Entornos sin acceso directo a archivos |
+| Mode | File | Ideal Use |
+|------|------|-----------|
+| **Basic** | `AGENTS.basic.md` | Total control, manual indexing |
+| **Auto-Index** | `AGENTS.auto-index.md` | Active development, automatic sync |
+| **Sandboxed** | `AGENTS.sandboxed.md` | Environments without direct file access |
 
 ### 1. Basic Mode
 
-**Para proyectos donde quieres control total.**
+**For projects where you want total control.**
 
-- ✅ El agente SIEMPRE consulta el Memory Bank antes de actuar
-- ✅ Solo indexa cuando el usuario lo solicita explícitamente
-- ✅ Pide permiso antes de modificar código
-- ✅ Sugiere reindexar después de cambios
+- ✅ Agent ALWAYS consults Memory Bank before acting
+- ✅ Only indexes when user explicitly requests
+- ✅ Asks permission before modifying code
+- ✅ Suggests reindexing after changes
 
-**Ideal para**: Proyectos críticos, revisión de código, onboarding.
+**Ideal for**: Critical projects, code review, onboarding.
 
 ### 2. Auto-Index Mode
 
-**Para desarrollo activo con sincronización automática.**
+**For active development with automatic synchronization.**
 
-- ✅ El agente consulta el Memory Bank automáticamente
-- ✅ Reindexa CADA archivo después de modificarlo
-- ✅ Mantiene el Memory Bank siempre actualizado
-- ✅ Puede leer/escribir archivos directamente
+- ✅ Agent consults Memory Bank automatically
+- ✅ Reindexes EVERY file after modifying it
+- ✅ Keeps Memory Bank always up to date
+- ✅ Can read/write files directly
 
-**Ideal para**: Desarrollo activo, iteración rápida, equipos.
+**Ideal for**: Active development, rapid iteration, teams.
 
 ### 3. Sandboxed Mode
 
-**Para entornos sin acceso directo al sistema de archivos.**
+**For environments without direct file system access.**
 
-- ✅ NO tiene acceso directo a archivos
-- ✅ DEBE usar `memorybank_read_file` para leer
-- ✅ DEBE usar `memorybank_write_file` para escribir
-- ✅ Auto-reindexa automáticamente en cada escritura
+- ✅ Does NOT have direct file access
+- ✅ MUST use `memorybank_read_file` to read
+- ✅ MUST use `memorybank_write_file` to write
+- ✅ Auto-reindexes automatically on each write
 
-**Ideal para**: Entornos restringidos, desarrollo remoto, seguridad.
+**Ideal for**: Restricted environments, remote development, security.
 
-### Plantillas Disponibles
+### Available Templates
 
-Todas las plantillas están disponibles en el repositorio de GitHub:
+All templates are available in the GitHub repository:
 
-#### Formato AGENTS.md (Cursor, Claude, Multi-agente)
+#### AGENTS.md Format (Cursor, Claude, Multi-agent)
 
-| Modo | URL |
+| Mode | URL |
 |------|-----|
 | **Basic** | [AGENTS.basic.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/AGENTS.basic.md) |
 | **Auto-Index** | [AGENTS.auto-index.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/AGENTS.auto-index.md) |
 | **Sandboxed** | [AGENTS.sandboxed.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/AGENTS.sandboxed.md) |
 
-**Instalación:**
+**Installation:**
 
 ```bash
-# Descargar plantilla (elige una)
+# Download template (choose one)
 curl -o AGENTS.md https://raw.githubusercontent.com/gcorroto/memory-bank-mcp/main/templates/AGENTS.basic.md
-# O
+# Or
 curl -o AGENTS.md https://raw.githubusercontent.com/gcorroto/memory-bank-mcp/main/templates/AGENTS.auto-index.md
-# O
+# Or
 curl -o AGENTS.md https://raw.githubusercontent.com/gcorroto/memory-bank-mcp/main/templates/AGENTS.sandboxed.md
 
-# Editar los placeholders:
-# - Reemplaza {{PROJECT_ID}} con tu ID de proyecto único
-# - Reemplaza {{WORKSPACE_PATH}} con la ruta absoluta del workspace
+# Edit placeholders:
+# - Replace {{PROJECT_ID}} with your unique project ID
+# - Replace {{WORKSPACE_PATH}} with the absolute workspace path
 ```
 
-#### Formato VS Code / GitHub Copilot
+#### VS Code / GitHub Copilot Format
 
-| Modo | URL |
+| Mode | URL |
 |------|-----|
 | **Basic** | [copilot-instructions.basic.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/copilot-instructions.basic.md) |
 | **Auto-Index** | [copilot-instructions.auto-index.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/copilot-instructions.auto-index.md) |
 | **Sandboxed** | [copilot-instructions.sandboxed.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/copilot-instructions.sandboxed.md) |
 | **Instructions** | [memory-bank.instructions.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/memory-bank.instructions.md) |
 
-**Instalación:**
+**Installation:**
 
 ```bash
-# Crear carpeta .github si no existe
+# Create .github folder if it doesn't exist
 mkdir -p .github
 
-# Descargar plantilla (elige una)
+# Download template (choose one)
 curl -o .github/copilot-instructions.md https://raw.githubusercontent.com/gcorroto/memory-bank-mcp/main/templates/vscode/copilot-instructions.basic.md
-# O
+# Or
 curl -o .github/copilot-instructions.md https://raw.githubusercontent.com/gcorroto/memory-bank-mcp/main/templates/vscode/copilot-instructions.auto-index.md
-# O
+# Or
 curl -o .github/copilot-instructions.md https://raw.githubusercontent.com/gcorroto/memory-bank-mcp/main/templates/vscode/copilot-instructions.sandboxed.md
 
-# Habilitar en VS Code settings.json:
+# Enable in VS Code settings.json:
 # "github.copilot.chat.codeGeneration.useInstructionFiles": true
 ```
 
-#### Instrucciones con Aplicación Condicional (VS Code)
+#### Instructions with Conditional Application (VS Code)
 
-Para usar el archivo `.instructions.md` que aplica solo a ciertos archivos:
+To use the `.instructions.md` file that applies only to certain files:
 
 ```bash
-# Crear carpeta de instrucciones
+# Create instructions folder
 mkdir -p .github/instructions
 
-# Descargar instrucciones base
+# Download base instructions
 curl -o .github/instructions/memory-bank.instructions.md https://raw.githubusercontent.com/gcorroto/memory-bank-mcp/main/templates/vscode/memory-bank.instructions.md
 ```
 
-Este archivo incluye `applyTo: "**/*"` que aplica a todos los archivos, pero puedes modificarlo.
+This file includes `applyTo: "**/*"` which applies to all files, but you can modify it.
 
-### Ejemplo de AGENTS.md Configurado
+### Configured AGENTS.md Example
 
 ```markdown
 # AGENTS.md
@@ -740,78 +740,78 @@ memorybank_get_project_docs({ projectId: "my-awesome-app", document: "activeCont
 
 ---
 
-## 🎯 Casos de Uso
+## 🎯 Use Cases
 
-### 1. Primera Indexación
-
-```
-Usuario: Hola, quiero que me ayudes con mi proyecto. El projectId es "my-app"
-Claude: [ejecuta memorybank_get_stats]
-        Veo que no hay código indexado aún. 
-        ¿Deseas que indexe el proyecto para poder ayudarte mejor?
-
-Usuario: Sí
-Claude: [ejecuta memorybank_index_code({ projectId: "my-app" })]
-        He indexado 145 archivos (1,234 chunks) en 45 segundos.
-        ¿En qué puedo ayudarte?
-```
-
-### 2. Búsqueda de Código
+### 1. First Indexing
 
 ```
-Usuario: ¿Cómo funciona la autenticación en este proyecto?
-Claude: [ejecuta memorybank_search({ projectId: "my-app", query: "autenticación login usuarios" })]
+User: Hi, I want you to help me with my project. The projectId is "my-app"
+Claude: [executes memorybank_get_stats]
+        I see there's no code indexed yet. 
+        Would you like me to index the project so I can help you better?
+
+User: Yes
+Claude: [executes memorybank_index_code({ projectId: "my-app" })]
+        I've indexed 145 files (1,234 chunks) in 45 seconds.
+        How can I help you?
+```
+
+### 2. Code Search
+
+```
+User: How does authentication work in this project?
+Claude: [executes memorybank_search({ projectId: "my-app", query: "authentication login users" })]
         
-        La autenticación se implementa en src/auth/authService.ts (líneas 23-87):
+        Authentication is implemented in src/auth/authService.ts (lines 23-87):
         
-        [Código encontrado]
+        [Found code]
         
-        El sistema usa JWT tokens con refresh token rotation. 
-        La validación se hace en el middleware src/middleware/auth.ts.
+        The system uses JWT tokens with refresh token rotation. 
+        Validation is done in the middleware src/middleware/auth.ts.
 ```
 
-### 3. Consulta Entre Proyectos
+### 3. Cross-Project Query
 
 ```
-Usuario: Estoy trabajando en "frontend-v2" pero quiero ver cómo se hizo la 
-         paginación en el proyecto "admin-dashboard"
+User: I'm working on "frontend-v2" but I want to see how pagination was done 
+      in the "admin-dashboard" project
 
-Claude: [ejecuta memorybank_search({ 
+Claude: [executes memorybank_search({ 
           projectId: "admin-dashboard", 
-          query: "paginación tabla listado" 
+          query: "pagination table listing" 
         })]
         
-        En admin-dashboard, la paginación se implementó así...
-        [Muestra código del otro proyecto]
+        In admin-dashboard, pagination was implemented like this...
+        [Shows code from the other project]
         
-        ¿Quieres que implemente algo similar en frontend-v2?
+        Would you like me to implement something similar in frontend-v2?
 ```
 
-### 4. Generación de Documentación
+### 4. Documentation Generation
 
 ```
-Usuario: Genera documentación del proyecto para nuevos desarrolladores
-Claude: [ejecuta memorybank_generate_project_docs({ projectId: "my-app" })]
+User: Generate project documentation for new developers
+Claude: [executes memorybank_generate_project_docs({ projectId: "my-app" })]
         
-        He generado 6 documentos de conocimiento del proyecto:
-        - projectBrief.md: Descripción general
-        - systemPatterns.md: Arquitectura y patrones
-        - techContext.md: Stack tecnológico
+        I've generated 6 project knowledge documents:
+        - projectBrief.md: General description
+        - systemPatterns.md: Architecture and patterns
+        - techContext.md: Tech stack
         ...
         
-        Puedes consultarlos en cualquier momento con memorybank_get_project_docs
+        You can query them anytime with memorybank_get_project_docs
 ```
 
 ---
 
-## 🔧 Archivos de Configuración
+## 🔧 Configuration Files
 
 ### `.memoryignore`
 
-Similar a `.gitignore`, especifica patrones a excluir de indexación:
+Similar to `.gitignore`, specifies patterns to exclude from indexing:
 
 ```bash
-# Dependencias
+# Dependencies
 node_modules/
 vendor/
 
@@ -836,184 +836,184 @@ build/
 *.mp4
 ```
 
-### Respeto de `.gitignore`
+### Respecting `.gitignore`
 
-Memory Bank **respeta automáticamente** los patrones de `.gitignore` en tu proyecto, además de los de `.memoryignore`.
+Memory Bank **automatically respects** `.gitignore` patterns in your project, in addition to `.memoryignore` patterns.
 
 ---
 
-## 💰 Costos de OpenAI
+## 💰 OpenAI Costs
 
-Memory Bank usa `text-embedding-3-small` que es muy económico:
+Memory Bank uses `text-embedding-3-small` which is very economical:
 
-- **Precio embeddings**: ~$0.00002 por 1K tokens
-- **Ejemplo**: 10,000 archivos × 1,000 tokens promedio = **~$0.20**
-- **Cache**: Los embeddings se cachean, solo se regeneran si el código cambia
-- **Incremental**: Solo se reindexan archivos modificados
+- **Embedding price**: ~$0.00002 per 1K tokens
+- **Example**: 10,000 files × 1,000 average tokens = **~$0.20**
+- **Cache**: Embeddings are cached, only regenerated if code changes
+- **Incremental**: Only modified files are reindexed
 
-**Búsquedas son extremadamente baratas** (solo 1 embedding por query).
+**Searches are extremely cheap** (only 1 embedding per query).
 
-**Documentación con IA** usa modelos de razonamiento que son más costosos pero se ejecutan solo cuando se solicita explícitamente.
+**AI Documentation** uses reasoning models which are more expensive but only run when explicitly requested.
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-# Ejecutar tests
+# Run tests
 npm test
 
-# Tests con cobertura
+# Tests with coverage
 npm test -- --coverage
 ```
 
 ---
 
-## 🔐 Seguridad y Privacidad
+## 🔐 Security and Privacy
 
-- ✅ **Vector store local**: LanceDB corre en tu máquina
-- ✅ **Sin telemetría**: No enviamos datos a servidores externos
-- ✅ **Solo embeddings**: OpenAI solo ve el texto del código, no metadata sensible
-- ✅ **Respeta .gitignore**: Archivos ignorados no se indexan
-- ✅ **API key segura**: Se lee de variables de entorno, nunca se hardcodea
+- ✅ **Local vector store**: LanceDB runs on your machine
+- ✅ **No telemetry**: We don't send data to external servers
+- ✅ **Embeddings only**: OpenAI only sees code text, not sensitive metadata
+- ✅ **Respects .gitignore**: Ignored files are not indexed
+- ✅ **Secure API key**: Read from environment variables, never hardcoded
 
-### Recomendaciones
+### Recommendations
 
-1. **No subas `.memorybank/` a git** (ya está en .gitignore)
-2. **Usa `.memoryignore`** para excluir archivos sensibles
-3. **API keys en variables de entorno**, nunca en código
-4. **Revisa que `.env` esté en .gitignore**
+1. **Don't push `.memorybank/` to git** (already in .gitignore)
+2. **Use `.memoryignore`** to exclude sensitive files
+3. **API keys in environment variables**, never in code
+4. **Verify `.env` is in .gitignore**
 
 ---
 
-## 🐛 Solución de Problemas
+## 🐛 Troubleshooting
 
 ### Error: "OPENAI_API_KEY is required"
 
-**Solución**: Configura tu API key en las variables de entorno del MCP.
+**Solution**: Configure your API key in the MCP environment variables.
 
 ### Error: "No files found to index"
 
-**Causas posibles**:
-1. El directorio está vacío
-2. Todos los archivos están en .gitignore/.memoryignore
-3. No hay archivos de código reconocidos
+**Possible causes**:
+1. Directory is empty
+2. All files are in .gitignore/.memoryignore
+3. No recognized code files
 
-### Búsquedas retornan resultados irrelevantes
+### Searches return irrelevant results
 
-**Soluciones**:
-1. **Aumenta `minScore`**: Usa 0.8 o 0.9 para resultados más precisos
-2. **Usa filtros**: `filterByFile` o `filterByLanguage`
-3. **Reformula la query**: Sé más específico y descriptivo
-4. **Reindexa**: `memorybank_index_code({ path: "..." })` (detecta cambios automáticamente por hash)
+**Solutions**:
+1. **Increase `minScore`**: Use 0.8 or 0.9 for more precise results
+2. **Use filters**: `filterByFile` or `filterByLanguage`
+3. **Rephrase query**: Be more specific and descriptive
+4. **Reindex**: `memorybank_index_code({ path: "..." })` (automatically detects changes by hash)
 
 ### Error: "projectId is required"
 
-**Solución**: Todas las herramientas requieren `projectId`. Define el `projectId` en tu archivo `AGENTS.md` para que el agente lo use consistentemente.
+**Solution**: All tools require `projectId`. Define `projectId` in your `AGENTS.md` file so the agent uses it consistently.
 
-### Índice desactualizado
+### Outdated Index
 
 ```json
 memorybank_get_stats({})
 ```
 
-Si `pendingFiles` muestra archivos pendientes, reindexa el directorio:
+If `pendingFiles` shows pending files, reindex the directory:
 
 ```json
 {
   "projectId": "my-project",
-  "path": "C:/workspaces/mi-proyecto/src"
+  "path": "C:/workspaces/my-project/src"
 }
 ```
 
-El sistema detecta cambios por hash automáticamente. Solo usa `forceReindex: true` si necesitas regenerar embeddings aunque no haya cambios.
+The system automatically detects changes by hash. Only use `forceReindex: true` if you need to regenerate embeddings even without changes.
 
 ---
 
-## 📖 Documentación Adicional
+## 📖 Additional Documentation
 
-### Plantillas de Instrucciones
+### Instruction Templates
 
-**Formato AGENTS.md** (estándar multi-agente):
-- [AGENTS.basic.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/AGENTS.basic.md) - Modo básico (indexación manual)
-- [AGENTS.auto-index.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/AGENTS.auto-index.md) - Modo auto-indexación
-- [AGENTS.sandboxed.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/AGENTS.sandboxed.md) - Modo sin acceso directo a archivos
+**AGENTS.md Format** (multi-agent standard):
+- [AGENTS.basic.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/AGENTS.basic.md) - Basic mode (manual indexing)
+- [AGENTS.auto-index.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/AGENTS.auto-index.md) - Auto-index mode
+- [AGENTS.sandboxed.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/AGENTS.sandboxed.md) - Sandboxed mode (no direct file access)
 
-**Formato VS Code / Copilot**:
-- [copilot-instructions.basic.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/copilot-instructions.basic.md) - Modo básico
-- [copilot-instructions.auto-index.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/copilot-instructions.auto-index.md) - Modo auto-indexación
-- [copilot-instructions.sandboxed.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/copilot-instructions.sandboxed.md) - Modo sandboxed
-- [memory-bank.instructions.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/memory-bank.instructions.md) - Instrucciones condicionales
-
----
-
-## 🤝 Contribución
-
-¡Contribuciones son bienvenidas!
-
-1. Fork el proyecto
-2. Crea tu feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push al branch (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
+**VS Code / Copilot Format**:
+- [copilot-instructions.basic.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/copilot-instructions.basic.md) - Basic mode
+- [copilot-instructions.auto-index.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/copilot-instructions.auto-index.md) - Auto-index mode
+- [copilot-instructions.sandboxed.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/copilot-instructions.sandboxed.md) - Sandboxed mode
+- [memory-bank.instructions.md](https://github.com/gcorroto/memory-bank-mcp/blob/main/templates/vscode/memory-bank.instructions.md) - Conditional instructions
 
 ---
 
-## 🎓 Inspiración
+## 🤝 Contributing
 
-Este proyecto combina los mejores conceptos de dos enfoques complementarios:
+Contributions are welcome!
 
-### Cursor IDE - Indexación Semántica
-
-El sistema de indexación vectorial y búsqueda semántica está inspirado en cómo Cursor IDE maneja la memoria de código:
-
-- [Advanced Cursor: Use the Memory Bank](https://medium.com/codetodeploy/advanced-cursor-use-the-memory-bank-to-eliminate-hallucination-affd3fbeefa3) - Eliminar alucinaciones con memoria persistente
-- [How Cursor Indexes Codebases Fast](https://read.engineerscodex.com/p/how-cursor-indexes-codebases-fast) - Técnicas de indexación eficiente
-
-### Cline - Documentación Estructurada del Proyecto
-
-El sistema de **Project Knowledge Layer** (documentos markdown estructurados) está inspirado en el enfoque de Cline Memory Bank:
-
-- [Cline MCP Memory Bank](https://github.com/dazeb/cline-mcp-memory-bank) - Implementación de referencia del Memory Bank para Cline
-- [Cline Memory Bank Custom Instructions](https://gist.github.com/zoharbabin/441e8e8b719a444f26b34bd0b189b283) - Instrucciones personalizadas para usar el Memory Bank
-
-**Documentos del enfoque Cline que adoptamos:**
-| Documento | Propósito |
-|-----------|-----------|
-| `projectBrief.md` | Requisitos y alcance del proyecto |
-| `productContext.md` | Propósito, usuarios objetivo, problemas que resuelve |
-| `activeContext.md` | Tareas actuales, cambios recientes, próximos pasos |
-| `systemPatterns.md` | Decisiones arquitectónicas, patrones, relaciones |
-| `techContext.md` | Stack tecnológico, dependencias, configuraciones |
-| `progress.md` | Hitos, estado general, problemas conocidos |
-
-### Nuestra Contribución
-
-Memory Bank MCP **fusiona ambos enfoques**:
-
-1. **Búsqueda Semántica** (estilo Cursor): Embeddings vectoriales + LanceDB para encontrar código relevante instantáneamente
-2. **Documentación Estructurada** (estilo Cline): 6 documentos markdown generados con IA que proporcionan contexto global
-3. **Multi-Proyecto**: Capacidad única de consultar múltiples proyectos indexados desde cualquier workspace
-
-Esta combinación permite que los agentes tengan tanto **precisión** (búsqueda semántica) como **comprensión global** (documentación estructurada)
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ---
 
-## 📜 Licencia
+## 🎓 Inspiration
 
-Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
+This project combines the best concepts from two complementary approaches:
+
+### Cursor IDE - Semantic Indexing
+
+The vector indexing and semantic search system is inspired by how Cursor IDE handles code memory:
+
+- [Advanced Cursor: Use the Memory Bank](https://medium.com/codetodeploy/advanced-cursor-use-the-memory-bank-to-eliminate-hallucination-affd3fbeefa3) - Eliminate hallucinations with persistent memory
+- [How Cursor Indexes Codebases Fast](https://read.engineerscodex.com/p/how-cursor-indexes-codebases-fast) - Efficient indexing techniques
+
+### Cline - Structured Project Documentation
+
+The **Project Knowledge Layer** system (structured markdown documents) is inspired by the Cline Memory Bank approach:
+
+- [Cline MCP Memory Bank](https://github.com/dazeb/cline-mcp-memory-bank) - Reference Memory Bank implementation for Cline
+- [Cline Memory Bank Custom Instructions](https://gist.github.com/zoharbabin/441e8e8b719a444f26b34bd0b189b283) - Custom instructions for using Memory Bank
+
+**Documents from the Cline approach we adopted:**
+| Document | Purpose |
+|----------|---------|
+| `projectBrief.md` | Project requirements and scope |
+| `productContext.md` | Purpose, target users, problems solved |
+| `activeContext.md` | Current tasks, recent changes, next steps |
+| `systemPatterns.md` | Architectural decisions, patterns, relationships |
+| `techContext.md` | Tech stack, dependencies, configurations |
+| `progress.md` | Milestones, overall status, known issues |
+
+### Our Contribution
+
+Memory Bank MCP **merges both approaches**:
+
+1. **Semantic Search** (Cursor-style): Vector embeddings + LanceDB to find relevant code instantly
+2. **Structured Documentation** (Cline-style): 6 AI-generated markdown documents providing global context
+3. **Multi-Project**: Unique capability to query multiple indexed projects from any workspace
+
+This combination allows agents to have both **precision** (semantic search) and **global understanding** (structured documentation).
 
 ---
 
-## 🆘 Soporte
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🆘 Support
 
 - **Issues**: [GitHub Issues](https://github.com/gcorroto/memory-bank-mcp/issues)
-- **Documentación**: [Wiki del Proyecto](https://github.com/gcorroto/memory-bank-mcp/wiki)
-- **OpenAI API**: [Documentación Oficial](https://platform.openai.com/docs)
-- **LanceDB**: [Documentación](https://lancedb.github.io/lancedb/)
+- **Documentation**: [Project Wiki](https://github.com/gcorroto/memory-bank-mcp/wiki)
+- **OpenAI API**: [Official Documentation](https://platform.openai.com/docs)
+- **LanceDB**: [Documentation](https://lancedb.github.io/lancedb/)
 
 ---
 
-⭐ Si este proyecto te resulta útil, ¡considera darle una estrella!
+⭐ If you find this project useful, consider giving it a star!
 
-**Hecho con ❤️ para la comunidad de AI coding assistants**
+**Made with ❤️ for the AI coding assistants community**
