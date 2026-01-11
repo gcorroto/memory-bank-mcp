@@ -424,6 +424,27 @@ export class IndexManager {
     
     const totalDuration = Date.now() - startTime;
     
+    // Update project config with sourcePath if projectKnowledgeService is available
+    if (this.projectKnowledgeService && processedFiles > 0) {
+      try {
+        // Calculate relative path from memorybank to the indexed project folder
+        const rootPathResolved = path.resolve(options.rootPath);
+        const workspaceRootResolved = path.resolve(workspaceRoot);
+        const relativePath = path.relative(workspaceRootResolved, rootPathResolved);
+        // Use forward slashes for consistency
+        const normalizedSourcePath = relativePath.split(path.sep).join('/');
+        
+        this.projectKnowledgeService.updateProjectConfig(projectId, {
+          sourcePath: normalizedSourcePath,
+          lastIndexed: Date.now(),
+        });
+        
+        console.error(`Updated project config: sourcePath=${normalizedSourcePath}`);
+      } catch (error: any) {
+        console.error(`Warning: Could not update project config: ${error.message}`);
+      }
+    }
+    
     return {
       filesProcessed: processedFiles,
       changedFiles,

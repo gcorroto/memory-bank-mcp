@@ -33,6 +33,16 @@ export interface ProjectDocMetadata {
 }
 
 /**
+ * Project configuration stored in metadata.json
+ * Contains the source path and other project-level settings
+ */
+export interface ProjectConfig {
+  sourcePath: string;         // Relative path to the project source (e.g., "../../workspaces/GRECOAI/Grec0AI_backend_py_langchain")
+  lastIndexed?: number;       // Timestamp of last indexing
+  projectName?: string;       // Optional human-readable project name
+}
+
+/**
  * Project document
  */
 export interface ProjectDoc {
@@ -203,6 +213,7 @@ export class ProjectKnowledgeService {
   private client: OpenAI;
   private options: Required<ProjectKnowledgeOptions>;
   private metadataCacheByProject: Map<string, Map<ProjectDocType, ProjectDocMetadata>>;
+  private projectConfigCache: Map<string, ProjectConfig>;
   
   constructor(apiKey: string, options?: ProjectKnowledgeOptions) {
     if (!apiKey) {
@@ -220,6 +231,7 @@ export class ProjectKnowledgeService {
     };
     
     this.metadataCacheByProject = new Map();
+    this.projectConfigCache = new Map();
   }
   
   /**
@@ -258,6 +270,13 @@ export class ProjectKnowledgeService {
         const data = JSON.parse(fs.readFileSync(metadataPath, "utf-8"));
         
         for (const [type, metadata] of Object.entries(data)) {
+          // Skip special keys like _projectConfig
+          if (type.startsWith('_')) {
+            if (type === '_projectConfig') {
+              this.projectConfigCache.set(projectId, metadata as ProjectConfig);
+            }
+            continue;
+          }
           cache.set(type as ProjectDocType, metadata as ProjectDocMetadata);
         }
         
@@ -282,8 +301,15 @@ export class ProjectKnowledgeService {
     if (!cache) return;
     
     try {
-      const data: Record<string, ProjectDocMetadata> = {};
+      const data: Record<string, ProjectDocMetadata | ProjectConfig> = {};
       
+      // Save project config first if exists
+      const projectConfig = this.projectConfigCache.get(projectId);
+      if (projectConfig) {
+        data['_projectConfig'] = projectConfig;
+      }
+      
+      // Save document metadata
       for (const [type, metadata] of cache) {
         data[type] = metadata;
       }
@@ -292,6 +318,34 @@ export class ProjectKnowledgeService {
     } catch (error) {
       console.error(`Warning: Could not save project docs metadata for ${projectId}: ${error}`);
     }
+  }
+  
+  /**
+   * Gets the project configuration (sourcePath, etc.)
+   */
+  public getProjectConfig(projectId: string): ProjectConfig | null {
+    // Ensure metadata is loaded
+    this.loadProjectMetadata(projectId);
+    return this.projectConfigCache.get(projectId) || null;
+  }
+  
+  /**
+   * Updates the project configuration (sourcePath, etc.)
+   */
+  public updateProjectConfig(projectId: string, config: Partial<ProjectConfig>): void {
+    // Ensure metadata is loaded
+    this.loadProjectMetadata(projectId);
+    
+    const existingConfig = this.projectConfigCache.get(projectId) || { sourcePath: '' };
+    const newConfig: ProjectConfig = {
+      ...existingConfig,
+      ...config,
+    };
+    
+    this.projectConfigCache.set(projectId, newConfig);
+    this.saveProjectMetadata(projectId);
+    
+    console.error(`Updated project config for ${projectId}: sourcePath=${newConfig.sourcePath}`);
   }
   
   /**
