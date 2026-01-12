@@ -167,7 +167,35 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 /**
+ * Finds a file by walking up the directory tree from startPath
+ * Returns the path if found, null otherwise
+ */
+function findFileInParents(startPath: string, fileName: string): string | null {
+  let currentDir = path.resolve(startPath);
+  const root = path.parse(currentDir).root;
+  
+  while (currentDir !== root) {
+    const filePath = path.join(currentDir, fileName);
+    if (fs.existsSync(filePath)) {
+      return filePath;
+    }
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) break; // Reached filesystem root
+    currentDir = parentDir;
+  }
+  
+  // Check root as well
+  const rootFilePath = path.join(root, fileName);
+  if (fs.existsSync(rootFilePath)) {
+    return rootFilePath;
+  }
+  
+  return null;
+}
+
+/**
  * Loads ignore patterns from .gitignore and .memoryignore files
+ * Searches for .memoryignore in rootPath and parent directories (like Git does)
  */
 export function loadIgnorePatterns(rootPath: string): any {
   const ig = ignore();
@@ -175,7 +203,7 @@ export function loadIgnorePatterns(rootPath: string): any {
   // Always ignore .git directory and .memorybank storage
   ig.add([".git", ".memorybank", "node_modules", "dist", "build", "out"]);
   
-  // Load .gitignore if exists
+  // Load .gitignore if exists in rootPath
   const gitignorePath = path.join(rootPath, ".gitignore");
   if (fs.existsSync(gitignorePath)) {
     try {
@@ -187,9 +215,10 @@ export function loadIgnorePatterns(rootPath: string): any {
     }
   }
   
-  // Load .memoryignore if exists
-  const memoryignorePath = path.join(rootPath, ".memoryignore");
-  if (fs.existsSync(memoryignorePath)) {
+  // Search for .memoryignore in rootPath and parent directories
+  // This allows placing .memoryignore at repo root while indexing a subfolder
+  const memoryignorePath = findFileInParents(rootPath, ".memoryignore");
+  if (memoryignorePath) {
     try {
       const memoryignoreContent = fs.readFileSync(memoryignorePath, "utf-8");
       ig.add(memoryignoreContent);
@@ -197,6 +226,8 @@ export function loadIgnorePatterns(rootPath: string): any {
     } catch (error) {
       console.error(`Warning: Could not read .memoryignore: ${error}`);
     }
+  } else {
+    console.error(`No .memoryignore found in ${rootPath} or parent directories`);
   }
   
   return ig;

@@ -9,6 +9,61 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import * as path from "path";
+import * as fs from "fs";
+
+/**
+ * Detects the workspace root by searching for common project markers
+ * Searches upward from startPath looking for .git, package.json, etc.
+ * This mimics how Git finds the repository root
+ */
+function detectWorkspaceRoot(startPath: string): string {
+  let currentDir = path.resolve(startPath);
+  const root = path.parse(currentDir).root;
+  
+  // Markers that indicate a project/workspace root (in priority order)
+  const rootMarkers = [
+    ".git",           // Git repository root
+    "package.json",   // Node.js project
+    "pom.xml",        // Maven project
+    "build.gradle",   // Gradle project
+    "Cargo.toml",     // Rust project
+    "go.mod",         // Go module
+    "pyproject.toml", // Python project
+    "setup.py",       // Python project (legacy)
+    ".project",       // Eclipse project
+    "*.sln",          // .NET solution (special handling below)
+  ];
+  
+  while (currentDir !== root) {
+    // Check each marker
+    for (const marker of rootMarkers) {
+      if (marker === "*.sln") {
+        // Special case: check for any .sln file
+        try {
+          const files = fs.readdirSync(currentDir);
+          if (files.some(f => f.endsWith(".sln"))) {
+            console.error(`Detected workspace root via .sln file: ${currentDir}`);
+            return currentDir;
+          }
+        } catch { /* ignore */ }
+      } else {
+        const markerPath = path.join(currentDir, marker);
+        if (fs.existsSync(markerPath)) {
+          console.error(`Detected workspace root via ${marker}: ${currentDir}`);
+          return currentDir;
+        }
+      }
+    }
+    
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
+  }
+  
+  // Fallback: return the original startPath
+  console.error(`No project markers found, using startPath as workspace root: ${startPath}`);
+  return startPath;
+}
 
 // Import Memory Bank services
 import { createEmbeddingService, EmbeddingService } from "./common/embeddingService.js";
@@ -817,9 +872,16 @@ async function validateEnvironment() {
   }
   console.error("✓ OpenAI API key configured");
   
-  // Get workspace root
-  workspaceRoot = process.env.MEMORYBANK_WORKSPACE_ROOT || process.cwd();
-  console.error(`✓ Workspace root: ${workspaceRoot}`);
+  // Get workspace root with smart detection
+  if (process.env.MEMORYBANK_WORKSPACE_ROOT) {
+    // Explicit configuration takes priority
+    workspaceRoot = process.env.MEMORYBANK_WORKSPACE_ROOT;
+    console.error(`✓ Workspace root (from env): ${workspaceRoot}`);
+  } else {
+    // Auto-detect by searching for project markers (.git, package.json, etc.)
+    workspaceRoot = detectWorkspaceRoot(process.cwd());
+    console.error(`✓ Workspace root (auto-detected): ${workspaceRoot}`);
+  }
   
   // Storage path
   const storagePath = process.env.MEMORYBANK_STORAGE_PATH || ".memorybank";
