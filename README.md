@@ -119,6 +119,16 @@ Memory Bank is configured through environment variables. You can set them in you
 | `MEMORYBANK_REASONING_EFFORT` | `medium` | Reasoning level: `low`, `medium`, `high` |
 | `MEMORYBANK_AUTO_UPDATE_DOCS` | `false` | Auto-regenerate docs when indexing code |
 
+#### Map-Reduce Auto-Summarization (v0.2.0+)
+
+For large projects that exceed the LLM context window, Memory Bank automatically uses **Map-Reduce summarization**:
+
+1. **Map Phase**: Splits chunks into batches (~100K chars each), summarizes each batch
+2. **Reduce Phase**: Combines batch summaries into a coherent final summary
+3. **Recursive**: If combined summaries still exceed threshold, recurses up to 3 levels
+
+This happens automatically when content exceeds 400K characters. No configuration needed.
+
 ### Configuration in Cursor IDE
 
 Edit your MCP configuration file:

@@ -9,6 +9,77 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { ChunkRecord } from "./vectorStore.js";
+import { countTokens } from "./chunker.js";
+
+// ============================================
+// Map-Reduce Configuration for Large Documents
+// ============================================
+// When content exceeds context window, use hierarchical summarization
+// Uses tokens (via gpt-tokenizer) for accurate batching
+
+/** 
+ * Model context windows (tokens) - GPT-5.x family
+ * Source: https://platform.openai.com/docs/models
+ */
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  "gpt-5.2": 400000,      // 400K context
+  "gpt-5-mini": 400000,   // 400K context  
+  "gpt-5-nano": 400000,   // 400K context
+  "gpt-5.1-codex": 400000,
+  "gpt-5": 400000,
+  "default": 128000,      // Fallback for unknown models
+};
+
+/** Maximum tokens per batch for map phase (safe margin under context window) */
+const MAX_TOKENS_PER_BATCH = 80000;  // ~80K tokens per batch
+
+/** Target summary length per batch in tokens */
+const MAX_SUMMARY_TOKENS = 2000;
+
+/** Threshold to trigger map-reduce summarization (tokens) */
+const MAP_REDUCE_TOKEN_THRESHOLD = 100000;  // Trigger if input > 100K tokens
+
+/** Maximum recursion depth for hierarchical summarization */
+const MAX_RECURSION_DEPTH = 3;
+
+/**
+ * Gets the context window size for a model
+ */
+function getModelContextWindow(model: string): number {
+  return MODEL_CONTEXT_WINDOWS[model] || MODEL_CONTEXT_WINDOWS["default"];
+}
+
+/**
+ * Prompt template for batch summarization (map phase)
+ * Used to compress chunks before final document generation
+ */
+const BATCH_SUMMARY_PROMPT = `You are a code analysis assistant. Summarize the following code chunks concisely.
+
+Focus on extracting:
+1. **Main Components**: Classes, functions, modules and their purposes
+2. **Patterns**: Design patterns, architectural decisions
+3. **Dependencies**: Key imports and external dependencies
+4. **Data Flow**: How data moves through the code
+
+Be concise but comprehensive. Maximum 1000 words.
+
+Code chunks to summarize:
+{chunks}
+
+Provide a structured summary in markdown format.`;
+
+/**
+ * Prompt for combining multiple batch summaries (reduce phase)
+ */
+const REDUCE_SUMMARY_PROMPT = `Combine the following code summaries into a single comprehensive summary.
+
+Merge similar information, remove redundancies, and create a cohesive overview.
+Maintain the structure: Components, Patterns, Dependencies, Data Flow.
+
+Summaries to combine:
+{summaries}
+
+Provide a unified markdown summary.`;
 
 /**
  * Types of project documents that can be generated
@@ -362,8 +433,12 @@ export class ProjectKnowledgeService {
   
   /**
    * Prepares chunks for inclusion in a prompt
+   * Uses Map-Reduce summarization if content exceeds context window threshold
    */
-  private prepareChunksForPrompt(chunks: ChunkRecord[], maxChunks: number): string {
+  private async prepareChunksForPrompt(
+    chunks: ChunkRecord[], 
+    maxChunks: number
+  ): Promise<{ text: string; usedMapReduce: boolean; mapReduceTokens: number }> {
     // Sort by relevance (prioritize certain file types)
     const priorityFiles = ["package.json", "readme", "index", "main", "app"];
     
@@ -385,11 +460,37 @@ export class ProjectKnowledgeService {
     const selected = sorted.slice(0, maxChunks);
     
     // Format for prompt
-    return selected.map(chunk => {
+    const formatted = selected.map(chunk => {
       return `--- File: ${chunk.file_path} (${chunk.language}) [${chunk.chunk_type}${chunk.name ? `: ${chunk.name}` : ""}] ---
 ${chunk.content}
 ---`;
     }).join("\n\n");
+    
+    // Count tokens using gpt-tokenizer (accurate for GPT-5.x)
+    const tokenCount = countTokens(formatted);
+    
+    // Check if content exceeds token threshold for map-reduce
+    if (tokenCount > MAP_REDUCE_TOKEN_THRESHOLD) {
+      console.error(`\n🔄 Content exceeds token threshold (${tokenCount.toLocaleString()} > ${MAP_REDUCE_TOKEN_THRESHOLD.toLocaleString()} tokens)`);
+      console.error(`   Initiating Map-Reduce summarization for ${selected.length} chunks...`);
+      
+      const mapReduceResult = await this.summarizeChunksMapReduce(selected);
+      
+      const resultTokens = countTokens(mapReduceResult.content);
+      console.error(`   Map-Reduce complete: ${resultTokens.toLocaleString()} tokens output, ${mapReduceResult.totalTokens.toLocaleString()} tokens used in processing\n`);
+      
+      return {
+        text: mapReduceResult.content,
+        usedMapReduce: true,
+        mapReduceTokens: mapReduceResult.totalTokens,
+      };
+    }
+    
+    return {
+      text: formatted,
+      usedMapReduce: false,
+      mapReduceTokens: 0,
+    };
   }
   
   /**
@@ -491,6 +592,187 @@ ${chunk.content}
     };
   }
   
+  // ============================================
+  // Map-Reduce Summarization Methods
+  // ============================================
+  
+  /**
+   * Summarizes a single batch of chunks (map phase)
+   * @param chunks Chunks to summarize
+   * @param batchIndex Batch number for logging
+   * @param totalBatches Total number of batches
+   * @returns Summary text and token usage
+   */
+  private async summarizeBatch(
+    chunks: ChunkRecord[],
+    batchIndex: number,
+    totalBatches: number
+  ): Promise<{ summary: string; tokens: number }> {
+    // Format chunks for the prompt
+    const chunksText = chunks.map(chunk => {
+      return `--- ${chunk.file_path} (${chunk.language}) ---\n${chunk.content}\n---`;
+    }).join("\n\n");
+    
+    const inputTokens = countTokens(chunksText);
+    const prompt = BATCH_SUMMARY_PROMPT.replace("{chunks}", chunksText);
+    
+    console.error(`  [Map ${batchIndex + 1}/${totalBatches}] Summarizing ${chunks.length} chunks (${inputTokens.toLocaleString()} tokens)...`);
+    
+    try {
+      const result = await this.callResponsesAPI(prompt);
+      console.error(`  [Map ${batchIndex + 1}/${totalBatches}] Done (${result.outputTokens.toLocaleString()} output tokens)`);
+      
+      return {
+        summary: result.content,
+        tokens: result.outputTokens + result.reasoningTokens,
+      };
+    } catch (error: any) {
+      console.error(`  [Map ${batchIndex + 1}/${totalBatches}] Error: ${error.message}`);
+      // Return a minimal summary on error
+      return {
+        summary: `[Batch ${batchIndex + 1} summary failed: ${error.message}]`,
+        tokens: 0,
+      };
+    }
+  }
+  
+  /**
+   * Combines multiple summaries into one (reduce phase)
+   * @param summaries Array of batch summaries
+   * @returns Combined summary
+   */
+  private async combineSummaries(summaries: string[]): Promise<{ summary: string; tokens: number }> {
+    const summariesText = summaries.map((s, i) => `### Batch ${i + 1} Summary\n${s}`).join("\n\n");
+    const inputTokens = countTokens(summariesText);
+    const prompt = REDUCE_SUMMARY_PROMPT.replace("{summaries}", summariesText);
+    
+    console.error(`  [Reduce] Combining ${summaries.length} summaries (${inputTokens.toLocaleString()} tokens)...`);
+    
+    try {
+      const result = await this.callResponsesAPI(prompt);
+      console.error(`  [Reduce] Done (${result.outputTokens.toLocaleString()} output tokens)`);
+      
+      return {
+        summary: result.content,
+        tokens: result.outputTokens + result.reasoningTokens,
+      };
+    } catch (error: any) {
+      console.error(`  [Reduce] Error: ${error.message}`);
+      // Fallback: just concatenate summaries
+      return {
+        summary: summaries.join("\n\n---\n\n"),
+        tokens: 0,
+      };
+    }
+  }
+  
+  /**
+   * Map-Reduce summarization for large chunk sets
+   * Recursively summarizes chunks in batches until content fits context window
+   * Uses token counting (via gpt-tokenizer) for accurate batching
+   * 
+   * @param chunks All chunks to process
+   * @param depth Current recursion depth
+   * @returns Summarized content that fits within context limits
+   */
+  private async summarizeChunksMapReduce(
+    chunks: ChunkRecord[],
+    depth: number = 0
+  ): Promise<{ content: string; totalTokens: number }> {
+    const indent = "  ".repeat(depth);
+    const totalInputTokens = chunks.reduce((sum, c) => sum + countTokens(c.content), 0);
+    console.error(`${indent}[Map-Reduce Depth ${depth}] Processing ${chunks.length} chunks (${totalInputTokens.toLocaleString()} tokens)...`);
+    
+    // Safety check for recursion depth
+    if (depth >= MAX_RECURSION_DEPTH) {
+      console.error(`${indent}[Map-Reduce] Max recursion depth reached, truncating...`);
+      // Take first N chunks that fit within token limit
+      let truncatedTokens = 0;
+      const truncated: ChunkRecord[] = [];
+      for (const chunk of chunks) {
+        const chunkTokens = countTokens(chunk.content);
+        if (truncatedTokens + chunkTokens > MAX_TOKENS_PER_BATCH) break;
+        truncated.push(chunk);
+        truncatedTokens += chunkTokens;
+      }
+      const content = truncated.map(c => `${c.file_path}: ${c.content.slice(0, 500)}...`).join("\n");
+      return { content, totalTokens: 0 };
+    }
+    
+    // Split chunks into batches based on TOKEN count (not characters)
+    const batches: ChunkRecord[][] = [];
+    let currentBatch: ChunkRecord[] = [];
+    let currentTokens = 0;
+    
+    for (const chunk of chunks) {
+      const chunkTokens = countTokens(chunk.content) + countTokens(chunk.file_path) + 20; // overhead for formatting
+      
+      if (currentTokens + chunkTokens > MAX_TOKENS_PER_BATCH && currentBatch.length > 0) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentTokens = 0;
+      }
+      
+      currentBatch.push(chunk);
+      currentTokens += chunkTokens;
+    }
+    
+    if (currentBatch.length > 0) {
+      batches.push(currentBatch);
+    }
+    
+    console.error(`${indent}[Map-Reduce Depth ${depth}] Split into ${batches.length} batches (max ${MAX_TOKENS_PER_BATCH.toLocaleString()} tokens/batch)`);
+    
+    // Map phase: summarize each batch in parallel
+    let totalTokens = 0;
+    const summaryPromises = batches.map((batch, index) => 
+      this.summarizeBatch(batch, index, batches.length)
+    );
+    
+    const summaryResults = await Promise.all(summaryPromises);
+    const summaries = summaryResults.map(r => r.summary);
+    totalTokens += summaryResults.reduce((sum, r) => sum + r.tokens, 0);
+    
+    // Check if combined summaries still exceed token threshold
+    const combinedText = summaries.join("\n\n");
+    const combinedTokens = countTokens(combinedText);
+    console.error(`${indent}[Map-Reduce Depth ${depth}] Combined summaries: ${combinedTokens.toLocaleString()} tokens`);
+    
+    if (combinedTokens > MAP_REDUCE_TOKEN_THRESHOLD && depth < MAX_RECURSION_DEPTH - 1) {
+      // Recursively summarize the summaries
+      console.error(`${indent}[Map-Reduce Depth ${depth}] Still exceeds ${MAP_REDUCE_TOKEN_THRESHOLD.toLocaleString()} tokens, recursing...`);
+      
+      // Convert summaries to pseudo-chunks for recursive processing
+      const summaryChunks: ChunkRecord[] = summaries.map((summary, i) => ({
+        id: `summary-${depth}-${i}`,
+        vector: [], // Empty vector - not used for map-reduce
+        file_path: `batch-${i}-summary`,
+        file_hash: "",
+        content: summary,
+        language: "markdown",
+        chunk_type: "summary",
+        start_line: 0,
+        end_line: 0,
+        timestamp: Date.now(),
+        project_id: "",
+      }));
+      
+      const recursiveResult = await this.summarizeChunksMapReduce(summaryChunks, depth + 1);
+      totalTokens += recursiveResult.totalTokens;
+      
+      return { content: recursiveResult.content, totalTokens };
+    }
+    
+    // Reduce phase: combine all summaries
+    if (summaries.length > 1) {
+      const reduceResult = await this.combineSummaries(summaries);
+      totalTokens += reduceResult.tokens;
+      return { content: reduceResult.summary, totalTokens };
+    }
+    
+    return { content: summaries[0] || "", totalTokens };
+  }
+  
   /**
    * Generates a single document for a specific project
    */
@@ -517,11 +799,11 @@ ${chunk.content}
     console.error(`Generating document: ${definition.title} (project: ${projectId})`);
     console.error(`  Input chunks: ${chunks.length}`);
     
-    // Prepare prompt
-    const chunksText = this.prepareChunksForPrompt(chunks, this.options.maxChunksPerDoc);
-    console.error(`  Chunks text length: ${chunksText.length} chars`);
+    // Prepare prompt (may trigger Map-Reduce if content too large)
+    const preparedChunks = await this.prepareChunksForPrompt(chunks, this.options.maxChunksPerDoc);
+    console.error(`  Chunks text length: ${preparedChunks.text.length} chars${preparedChunks.usedMapReduce ? ' (after Map-Reduce)' : ''}`);
     
-    let prompt = definition.promptTemplate.replace("{chunks}", chunksText);
+    let prompt = definition.promptTemplate.replace("{chunks}", preparedChunks.text);
     
     if (type === "progress" && previousProgress) {
       prompt = prompt.replace("{previousProgress}", previousProgress);
@@ -532,6 +814,9 @@ ${chunk.content}
     // Call API
     const result = await this.callResponsesAPI(prompt);
     
+    // Include map-reduce tokens in the total
+    const totalReasoningTokens = result.reasoningTokens + (preparedChunks.usedMapReduce ? preparedChunks.mapReduceTokens : 0);
+    
     // Create document
     const doc: ProjectDoc = {
       type,
@@ -540,7 +825,7 @@ ${chunk.content}
         type,
         lastGenerated: Date.now(),
         lastInputHash: inputHash,
-        reasoningTokens: result.reasoningTokens,
+        reasoningTokens: totalReasoningTokens,
         outputTokens: result.outputTokens,
       },
     };
@@ -553,7 +838,8 @@ ${chunk.content}
     metadataCache.set(type, doc.metadata);
     this.saveProjectMetadata(projectId);
     
-    console.error(`Generated ${definition.title} (${result.reasoningTokens} reasoning + ${result.outputTokens} output tokens)`);
+    const mapReduceNote = preparedChunks.usedMapReduce ? ` [Map-Reduce: ${preparedChunks.mapReduceTokens} tokens]` : '';
+    console.error(`Generated ${definition.title} (${result.reasoningTokens} reasoning + ${result.outputTokens} output tokens)${mapReduceNote}`);
     
     return doc;
   }
