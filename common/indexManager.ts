@@ -6,7 +6,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { scanFiles, scanSingleFile, FileMetadata } from "./fileScanner.js";
-import { chunkCode, CodeChunk } from "./chunker.js";
+import { chunkCodeAsync, CodeChunk } from "./chunker.js";
 import { EmbeddingService } from "./embeddingService.js";
 import { VectorStore, ChunkRecord } from "./vectorStore.js";
 import { ProjectKnowledgeService, GenerationResult } from "./projectKnowledgeService.js";
@@ -194,12 +194,12 @@ export class IndexManager {
       const content = fs.readFileSync(file.absolutePath, "utf-8");
       
       // Get token limits from environment or use defaults
-      // text-embedding-3-small has 8192 token limit, default to 7500 for safety
-      const maxTokens = parseInt(process.env.MEMORYBANK_MAX_TOKENS || "7500");
+      // text-embedding-3-small has 8192 token limit, default to 6000 for safety
+      const maxTokens = parseInt(process.env.MEMORYBANK_MAX_TOKENS || "6000");
       const chunkOverlapTokens = parseInt(process.env.MEMORYBANK_CHUNK_OVERLAP_TOKENS || "200");
       
-      // Chunk the code using token-based chunking
-      const chunks = chunkCode({
+      // Chunk the code using AST-based chunking (with fallback to token-based)
+      const chunks = await chunkCodeAsync({
         filePath: file.path,
         content,
         language: file.language,

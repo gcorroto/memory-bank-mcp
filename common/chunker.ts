@@ -1,7 +1,8 @@
 /**
  * @fileoverview Intelligent code chunker for Memory Bank
  * Fragments code intelligently using AST parsing when possible
- * Uses token counting to respect embedding model limits
+ * Uses Tree-sitter for multi-language AST support
+ * Falls back to token counting for unsupported languages
  */
 
 import * as fs from "fs";
@@ -9,14 +10,18 @@ import { parse } from "@babel/parser";
 import traverseLib from "@babel/traverse";
 import * as crypto from "crypto";
 import { encode } from "gpt-tokenizer";
+import { chunkWithAST, isLanguageSupportedByAST, ASTCodeChunk } from "./astChunker.js";
 
 // Handle traverse library export
 const traverse = typeof traverseLib === 'function' ? traverseLib : (traverseLib as any).default;
 
 // Constants for embedding model limits
-// text-embedding-3-small has 8192 token limit, use 7500 for safety margin
-const MAX_TOKENS_PER_CHUNK = 7500;
+// text-embedding-3-small has 8192 token limit
+// Use 6000 for safety margin (accounting for tokenizer differences and context)
+const MAX_TOKENS_PER_CHUNK = 6000;
 const DEFAULT_CHUNK_OVERLAP_TOKENS = 200;
+// Absolute maximum - chunks exceeding this will always be split
+const ABSOLUTE_MAX_TOKENS = 7500;
 
 export interface CodeChunk {
   id: string;              // Unique hash ID
@@ -24,11 +29,12 @@ export interface CodeChunk {
   content: string;         // Content of the chunk
   startLine: number;       // Starting line number
   endLine: number;         // Ending line number
-  chunkType: "function" | "class" | "method" | "block" | "file";
+  chunkType: "function" | "class" | "method" | "interface" | "module" | "block" | "file";
   name?: string;           // Name of function/class if applicable
   language: string;        // Programming language
   context?: string;        // Additional context (imports, etc.)
   tokenCount?: number;     // Token count for the chunk
+  parentName?: string;     // For methods: the class they belong to
 }
 
 export interface ChunkOptions {
@@ -512,6 +518,7 @@ function chunkPython(options: Required<ChunkOptions>): CodeChunk[] {
 
 /**
  * Chunks code by token count with overlap (replacement for chunkByFixedSize)
+ * NOTE: This function now enforces token limits on all chunks including the final one
  */
 function chunkByTokens(options: Required<ChunkOptions>): CodeChunk[] {
   const chunks: CodeChunk[] = [];
@@ -578,7 +585,9 @@ function chunkByTokens(options: Required<ChunkOptions>): CodeChunk[] {
     });
   }
   
-  return chunks;
+  // IMPORTANT: Enforce token limits on all chunks (including final chunk)
+  // This fixes the bug where the final chunk could exceed the token limit
+  return enforceTokenLimits(chunks, options.maxTokens, options.chunkOverlapTokens);
 }
 
 /**
@@ -590,29 +599,144 @@ function chunkByFixedSize(options: Required<ChunkOptions>): CodeChunk[] {
 }
 
 /**
- * Main chunking function - routes to appropriate strategy based on language
+ * Converts ASTCodeChunk to CodeChunk (compatible interface)
  */
-export function chunkCode(options: ChunkOptions): CodeChunk[] {
+function astChunkToCodeChunk(astChunk: ASTCodeChunk): CodeChunk {
+  return {
+    id: astChunk.id,
+    filePath: astChunk.filePath,
+    content: astChunk.content,
+    startLine: astChunk.startLine,
+    endLine: astChunk.endLine,
+    chunkType: astChunk.chunkType,
+    name: astChunk.name,
+    language: astChunk.language,
+    context: astChunk.context,
+    tokenCount: astChunk.tokenCount,
+    parentName: astChunk.parentName,
+  };
+}
+
+/**
+ * Main async chunking function - uses Tree-sitter AST parsing for all supported languages
+ * Falls back to legacy methods if AST parsing is not available
+ */
+export async function chunkCodeAsync(options: ChunkOptions): Promise<CodeChunk[]> {
   const fullOptions: Required<ChunkOptions> = {
     filePath: options.filePath,
     content: options.content,
     language: options.language,
     maxTokens: options.maxTokens || MAX_TOKENS_PER_CHUNK,
     chunkOverlapTokens: options.chunkOverlapTokens || DEFAULT_CHUNK_OVERLAP_TOKENS,
-    // Legacy options mapping
+    maxChunkSize: options.maxChunkSize || 1000,
+    chunkOverlap: options.chunkOverlap || 200,
+  };
+
+  // First, try AST-based chunking if language is supported
+  if (isLanguageSupportedByAST(fullOptions.language)) {
+    console.error(`[Chunker] Using AST chunking for ${fullOptions.language}: ${fullOptions.filePath}`);
+    
+    try {
+      const astChunks = await chunkWithAST({
+        filePath: fullOptions.filePath,
+        content: fullOptions.content,
+        language: fullOptions.language,
+        maxTokens: fullOptions.maxTokens,
+        chunkOverlapTokens: fullOptions.chunkOverlapTokens,
+      });
+
+      // If AST chunking succeeded, convert and return
+      if (astChunks.length > 0) {
+        const chunks = astChunks.map(astChunkToCodeChunk);
+        console.error(`[Chunker] AST chunking created ${chunks.length} chunks`);
+        return validateAndLogChunks(chunks, fullOptions.filePath);
+      }
+    } catch (error) {
+      console.error(`[Chunker] AST chunking failed, falling back: ${error}`);
+    }
+  }
+
+  // Fallback to legacy chunking methods
+  console.error(`[Chunker] Using fallback chunking for ${fullOptions.language}: ${fullOptions.filePath}`);
+  return chunkCodeSync(fullOptions);
+}
+
+/**
+ * Synchronous chunking function - legacy fallback
+ * Uses Babel for TypeScript/JavaScript, pattern matching for Python, token-based for others
+ */
+export function chunkCodeSync(options: ChunkOptions): CodeChunk[] {
+  const fullOptions: Required<ChunkOptions> = {
+    filePath: options.filePath,
+    content: options.content,
+    language: options.language,
+    maxTokens: options.maxTokens || MAX_TOKENS_PER_CHUNK,
+    chunkOverlapTokens: options.chunkOverlapTokens || DEFAULT_CHUNK_OVERLAP_TOKENS,
     maxChunkSize: options.maxChunkSize || 1000,
     chunkOverlap: options.chunkOverlap || 200,
   };
   
-  // Route to appropriate chunking strategy
+  // Route to appropriate chunking strategy based on language
+  let chunks: CodeChunk[];
+  
   if (fullOptions.language === "typescript" || fullOptions.language === "javascript") {
-    return chunkTypeScriptJavaScript(fullOptions);
+    chunks = chunkTypeScriptJavaScript(fullOptions);
   } else if (fullOptions.language === "python") {
-    return chunkPython(fullOptions);
+    chunks = chunkPython(fullOptions);
   } else {
-    // For other languages, use token-based chunking
-    return chunkByTokens(fullOptions);
+    // For all other languages, use token-based chunking
+    chunks = chunkByTokens(fullOptions);
   }
+  
+  // Final validation: ensure no chunk exceeds the absolute maximum
+  return validateAndLogChunks(chunks, fullOptions.filePath);
+}
+
+/**
+ * Main chunking function - synchronous wrapper (for backward compatibility)
+ * @deprecated Use chunkCodeAsync for better AST-based chunking
+ */
+export function chunkCode(options: ChunkOptions): CodeChunk[] {
+  // For backward compatibility, use sync version
+  // Note: This won't use AST chunking for Java/Kotlin/etc.
+  // Use chunkCodeAsync for full AST support
+  return chunkCodeSync(options);
+}
+
+/**
+ * Validates chunks and logs warnings for any that are close to or exceed limits
+ */
+function validateAndLogChunks(chunks: CodeChunk[], filePath: string): CodeChunk[] {
+  const result: CodeChunk[] = [];
+  
+  for (const chunk of chunks) {
+    const tokenCount = chunk.tokenCount ?? countTokens(chunk.content);
+    
+    // Warning if chunk is getting close to limit
+    if (tokenCount > MAX_TOKENS_PER_CHUNK) {
+      console.error(
+        `⚠️  Chunk in ${filePath} exceeds target limit: ${tokenCount} tokens (target: ${MAX_TOKENS_PER_CHUNK})`
+      );
+      
+      // If it exceeds absolute maximum, split it further
+      if (tokenCount > ABSOLUTE_MAX_TOKENS) {
+        console.error(
+          `❌ Chunk exceeds absolute maximum (${ABSOLUTE_MAX_TOKENS}), force splitting...`
+        );
+        const subChunks = splitLargeChunk(
+          { ...chunk, tokenCount },
+          ABSOLUTE_MAX_TOKENS,
+          DEFAULT_CHUNK_OVERLAP_TOKENS
+        );
+        result.push(...subChunks);
+        continue;
+      }
+    }
+    
+    result.push({ ...chunk, tokenCount });
+  }
+  
+  return result;
 }
 
 /**
