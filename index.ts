@@ -1007,6 +1007,8 @@ async function startStdioServer() {
     console.error("    - memorybank_update_context: Actualizar contexto de sesión");
     console.error("    - memorybank_record_decision: Registrar decisiones técnicas");
     console.error("    - memorybank_track_progress: Actualizar progreso del proyecto");
+    console.error("  Multi-Agent Coordination:");
+    console.error("    - memorybank_manage_agents: Coordinación y bloqueos de recursos");
     console.error("");
     console.error("Available resources:");
     console.error("    - memory://{projectId}/active: Contexto activo");
