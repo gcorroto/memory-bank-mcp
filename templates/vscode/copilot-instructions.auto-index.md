@@ -55,6 +55,12 @@ This project uses Memory Bank MCP as a **RAG system** (Retrieval-Augmented Gener
 
 **No exceptions.** Keeps the RAG updated and accurate.
 
+#### Rule 3: RESPECT PROJECT BOUNDARIES
+
+**You own `{{PROJECT_ID}}`. Do NOT modify other projects.**
+- **Discover**: `memorybank_discover_projects` to find other agents.
+- **Delegate**: `memorybank_delegate_task` to hand off work.
+
 ---
 
 ### Available Tools
@@ -66,6 +72,13 @@ This project uses Memory Bank MCP as a **RAG system** (Retrieval-Augmented Gener
 | `memorybank_index_code` | **AFTER any modification** |
 | `memorybank_read_file` | When need full file context |
 | `memorybank_write_file` | Write with auto-reindex |
+
+#### Multi-Project
+| Tool | Description |
+|------|-------------|
+| `memorybank_manage_agents` | Coordination & locking |
+| `memorybank_discover_projects` | Find other projects |
+| `memorybank_delegate_task` | Handoff work |
 
 #### Project Knowledge Layer
 | Tool | Description |

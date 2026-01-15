@@ -1076,6 +1076,8 @@ async function startStdioServer() {
     console.error("    - memorybank_track_progress: Actualizar progreso del proyecto");
     console.error("  Multi-Agent Coordination:");
     console.error("    - memorybank_manage_agents: Coordinación y bloqueos de recursos");
+    console.error("    - memorybank_discover_projects: Descubrir otros proyectos en el ecosistema");
+    console.error("    - memorybank_delegate_task: Delegar tareas a otros proyectos");
     console.error("");
     console.error("Available resources:");
     console.error("    - memory://{projectId}/active: Contexto activo");

@@ -55,6 +55,16 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 
 **No exceptions.** If you modify a file and don't reindex, the Memory Bank becomes stale and you risk hallucinations.
 
+#### Rule 3: RESPECT PROJECT BOUNDARIES
+
+**You are the expert for project `{{PROJECT_ID}}`.**
+
+- **Do NOT modify files** outside your project's scope, even if you can access them.
+- **Do NOT implement features** that belong to another component (backend vs frontend).
+- **INSTEAD:**
+  1. **Discover**: Use `memorybank_discover_projects` to find the owner.
+  2. **Delegate**: Use `memorybank_delegate_task` to send them the work.
+
 ---
 
 ### Available Tools
@@ -68,6 +78,13 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 | `memorybank_write_file` | Write with auto-reindex | Alternative to manual write+index |
 | `memorybank_get_stats` | Index statistics | Check coverage |
 | `memorybank_analyze_coverage` | Coverage analysis | Find unindexed areas |
+
+#### Multi-Project & Coordination
+| Tool | Description |
+|------|-------------|
+| `memorybank_manage_agents` | Coordination & locking |
+| `memorybank_discover_projects` | Find other projects in the ecosystem |
+| `memorybank_delegate_task` | Create tasks for other project agents |
 
 #### Project Knowledge Layer (AI Documentation)
 | Tool | Description |

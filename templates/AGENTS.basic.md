@@ -13,6 +13,12 @@ This project uses Memory Bank MCP for semantic code understanding. You MUST foll
 
 ### Available Tools
 
+#### Connectivity (Multi-Project)
+| Tool | Description |
+|------|-------------|
+| `memorybank_discover_projects` | Find other projects |
+| `memorybank_delegate_task` | Handoff work |
+
 #### Core Memory Bank (Semantic Search)
 | Tool | Description |
 |------|-------------|
@@ -52,6 +58,12 @@ This project uses Memory Bank MCP for semantic code understanding. You MUST foll
 The Memory Bank is a **RAG system** that keeps your knowledge accurate and **prevents hallucinations**.
 
 **NEVER implement anything without first consulting the Memory Bank.**
+
+### Rule 3: RESPECT PROJECT BOUNDARIES
+
+**You own `{{PROJECT_ID}}`. Do NOT modify other projects.**
+- **Discover**: `memorybank_discover_projects` to find other agents.
+- **Delegate**: `memorybank_delegate_task` to hand off work.
 
 Before answering ANY question or making ANY code change, you MUST:
 

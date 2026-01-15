@@ -360,6 +360,28 @@ This tool allows agents to interact with the board:
 }
 ```
 
+### Protocol for Cross-Project Delegation (Handoff) 🆕
+
+Agents can also discover and delegate tasks to other projects in the ecosystem.
+
+**1. Discovery**: Find other agents/projects.
+```json
+// Find backend projects
+memorybank_discover_projects({ "query": "backend" })
+// Returns: [{ projectId: "memory_bank_mcp", description: "Backend MCP Server..." }]
+```
+
+**2. Delegation**: Create a task in another project's board.
+```json
+memorybank_delegate_task({
+  "projectId": "frontend-app",
+  "targetProjectId": "memory_bank_mcp",
+  "title": "Add API endpoint",
+  "description": "Please add a new endpoint...",
+  "context": "Frontend needs this for feature X"
+})
+```
+
 ---
 
 ## 🔀 Multi-Project: Cross-Project Queries

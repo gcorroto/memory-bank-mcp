@@ -15,6 +15,12 @@ The Memory Bank is your **RAG system** (Retrieval-Augmented Generation) - it kee
 
 ### ⚠️ CRITICAL RULE: ALWAYS SEARCH BEFORE IMPLEMENTING
 
+#### Rule 3: RESPECT PROJECT BOUNDARIES
+
+**You own `{{PROJECT_ID}}`. Do NOT modify other projects.**
+- **Discover**: `memorybank_discover_projects` to find other agents.
+- **Delegate**: `memorybank_delegate_task` to hand off work.
+
 **NEVER write code without first consulting the Memory Bank.**
 
 ```json
@@ -31,6 +37,12 @@ You MUST use Memory Bank tools for ALL operations:
 - **Writing files**: `memorybank_write_file` (auto-reindexes)
 
 ### Available Tools
+
+#### Connectivity (Multi-Project)
+| Tool | Description |
+|------|-------------|
+| `memorybank_discover_projects` | Find other projects |
+| `memorybank_delegate_task` | Handoff work |
 
 #### Core Memory Bank (Semantic Search)
 | Tool | Description |
