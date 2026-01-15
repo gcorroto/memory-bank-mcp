@@ -39,8 +39,8 @@ export class AgentBoard {
             const initialContent = `# Multi-Agent Board
 
 ## Active Agents
-| Agent ID | Status | Current Focus | Last Heartbeat |
-|---|---|---|---|
+| Agent ID | Status | Current Focus | Session ID | Last Heartbeat |
+|---|---|---|---|---|
 
 ## File Locks
 | File Pattern | Claimed By | Since |
@@ -54,36 +54,70 @@ export class AgentBoard {
         }
     }
 
-    async registerAgent(agentId: string): Promise<void> {
+    async registerAgent(agentId: string, sessionId?: string): Promise<void> {
         await this.updateBoard((content) => {
             const agents = this.parseTable(content, 'Active Agents');
             const existing = agents.findIndex(a => a[0]?.trim() === agentId);
             
             const now = new Date().toISOString();
+            const session = sessionId || (existing >= 0 ? (agents[existing][3] || '') : ''); // Use col 3 as SessionID based on previous read
+
             if (existing >= 0) {
-                agents[existing] = [agentId, 'ACTIVE', '-', now];
+                 // Check if it's already 5 cols or 4
+                 if (agents[existing].length < 5) {
+                    agents[existing] = [agentId, 'ACTIVE', '-', session, now];
+                 } else {
+                     // preserve existing fields if needed, but update timestamp
+                    agents[existing] = [agentId, 'ACTIVE', '-', session, now];
+                 }
             } else {
-                agents.push([agentId, 'ACTIVE', '-', now]);
+                agents.push([agentId, 'ACTIVE', '-', session, now]);
             }
             
-            return this.updateTable(content, 'Active Agents', ['Agent ID', 'Status', 'Current Focus', 'Last Heartbeat'], agents);
+            return this.updateTable(content, 'Active Agents', ['Agent ID', 'Status', 'Current Focus', 'Session ID', 'Last Heartbeat'], agents);
         });
     }
 
+
     async updateStatus(agentId: string, status: string, focus: string): Promise<void> {
         await this.updateBoard((content) => {
-            const agents = this.parseTable(content, 'Active Agents');
-            const idx = agents.findIndex(a => a[0]?.trim() === agentId);
+            let agents = this.parseTable(content, 'Active Agents');
             
+            // Migration: Ensure 5 columns
+            agents = agents.map(row => {
+                if (row.length === 4) {
+                    return [row[0], row[1], row[2], '', row[3]];
+                }
+                return row;
+            });
+
+            const idx = agents.findIndex(a => a[0]?.trim() === agentId);
             const now = new Date().toISOString();
+            
             if (idx >= 0) {
-                agents[idx] = [agentId, status, focus, now];
+                // Keep existing session ID
+                const currentSession = agents[idx][3] || '';
+                agents[idx] = [agentId, status, focus, currentSession, now];
             } else {
-                agents.push([agentId, status, focus, now]);
+                agents.push([agentId, status, focus, '', now]);
             }
             
-            return this.updateTable(content, 'Active Agents', ['Agent ID', 'Status', 'Current Focus', 'Last Heartbeat'], agents);
+            return this.updateTable(content, 'Active Agents', ['Agent ID', 'Status', 'Current Focus', 'Session ID', 'Last Heartbeat'], agents);
         });
+    }
+
+    async getSessionId(agentId: string): Promise<string | undefined> {
+        const content = await this.getBoardContent();
+        const agents = this.parseTable(content, 'Active Agents');
+        const agent = agents.find(a => a[0]?.trim() === agentId);
+        
+        if (agent) {
+             // Handle 5 cols
+             if (agent.length >= 5) return agent[3].trim();
+             // Handle 4 cols (legacy) - no session ID
+             return undefined;
+        }
+        return undefined;
     }
 
     async claimResource(agentId: string, resource: string): Promise<boolean> {

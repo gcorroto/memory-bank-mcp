@@ -18,7 +18,7 @@ This project uses Memory Bank MCP as a **RAG system** (Retrieval-Augmented Gener
 **BEFORE starting any task, you MUST check the Agent Board.** This prevents multiple agents from modifying the same files simultaneously or duplicating work.
 
 1. **Check Board**: Use `memorybank_manage_agents` with `action: "get_board"` to see active agents/locks.
-2. **Register**: Identity yourself (e.g., `dev-1`). If needed: `action: "register"`.
+2. **Register**: Identity yourself (e.g., `role-ide-model`). Call `action: "register"` with your `agentId`. The system will assign a **Session ID** for tracking context automatically.
 3. **Claim Task**: `action: "claim_resource"` for the file/feature you are working on.
 4. **Work**: Perform your task (Search -> Implement -> Index).
 5. **Release**: `action: "release_resource"` when done.
@@ -112,11 +112,11 @@ CONFIRM TO USER
 
 1. **Establish Identity** (CRITICAL):
    - Pick a unique ID: `{Role}-{IDE}-{Model}-{ShortHash}`
-   - Examples: `Dev-VSCode-GPT4-8A2F`, `Arch-Cursor-Claude3.5-9B1C`.
-   - Register:
+   - Register (System assigns Session ID automatically):
    ```json
    { "projectId": "{{PROJECT_ID}}", "action": "register", "agentId": "Dev-VSCode-GPT4-8A2F" }
    ```
+   - **Pass `agentId` in all future tool calls**.
 
 2. **Initialize if first time**:
 ```json

@@ -181,6 +181,10 @@ server.tool(
       .string()
       .optional()
       .describe("Filtrar resultados por lenguaje de programación (ej: 'typescript', 'python')"),
+    agentId: z
+      .string()
+      .optional()
+      .describe("Identificador del agente (para logging de sesión)"),
   },
   async (args) => {
     const result = await searchMemory(
@@ -191,8 +195,10 @@ server.tool(
         minScore: args.minScore,
         filterByFile: args.filterByFile,
         filterByLanguage: args.filterByLanguage,
+        agentId: args.agentId,
       },
-      indexManager
+      indexManager,
+      workspaceRoot
     );
     
     return {
@@ -628,6 +634,7 @@ server.tool(
     projectId: z.string().describe("Identificador único del proyecto (OBLIGATORIO)"),
     action: z.enum(["register", "update_status", "claim_resource", "release_resource", "get_board"]).describe("Acción a realizar"),
     agentId: z.string().optional().describe("Identificador del agente (ej: 'dev-agent-1'). Requerido para escrituras."),
+    sessionId: z.string().optional().describe("UUID de sesión del agente para tracking de contexto."),
     status: z.string().optional().describe("Estado del agente (para update_status)."),
     focus: z.string().optional().describe("Tarea o fichero en el que se enfoca (para update_status)."),
     resource: z.string().optional().describe("Identificador del recurso a bloquear (ej: 'src/auth/')."),
@@ -643,6 +650,7 @@ server.tool(
         projectId: args.projectId,
         action: args.action as any,
         agentId: args.agentId,
+        sessionId: args.sessionId,
         status: args.status,
         focus: args.focus,
         resource: args.resource

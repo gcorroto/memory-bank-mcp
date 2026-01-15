@@ -1,5 +1,6 @@
 import { AgentBoard } from '../common/agentBoard.js';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 const WORKSPACE_ROOT = process.cwd(); // Will be overridden by actual workspace logic if passed
 
@@ -7,13 +8,14 @@ export interface ManageAgentsParams {
   projectId: string;
   action: 'register' | 'update_status' | 'claim_resource' | 'release_resource' | 'get_board';
   agentId?: string;
+  sessionId?: string;
   status?: string;
   focus?: string;
   resource?: string;
 }
 
 export async function manageAgentsTool(params: ManageAgentsParams, workspaceRoot: string = WORKSPACE_ROOT): Promise<any> {
-    const { projectId, action, agentId, status, focus, resource } = params;
+    const { projectId, action, agentId, sessionId, status, focus, resource } = params;
 
     const board = new AgentBoard(workspaceRoot, projectId);
 
@@ -21,8 +23,17 @@ export async function manageAgentsTool(params: ManageAgentsParams, workspaceRoot
         switch (action) {
             case 'register':
                 if (!agentId) throw new Error('agentId is required for register');
-                await board.registerAgent(agentId);
-                return { success: true, message: `Agent ${agentId} registered` };
+                
+                // Auto-generate session ID if not provided.
+                // This abstracts the session management from the agent.
+                const effectiveSessionId = sessionId || crypto.randomUUID();
+                
+                await board.registerAgent(agentId, effectiveSessionId);
+                return { 
+                    success: true, 
+                    message: `Agent ${agentId} registered`,
+                    sessionId: effectiveSessionId 
+                };
 
             case 'update_status':
                 if (!agentId) throw new Error('agentId is required for update_status');
@@ -76,6 +87,10 @@ export const manageAgentsToolDefinition = {
       agentId: {
         type: "string",
         description: "Identificador del agente (ej: 'dev-agent-1'). Requerido para escrituras.",
+      },
+      sessionId: {
+        type: "string",
+        description: "Identificador de sesión (opcional, para registro)",
       },
       status: {
         type: "string",

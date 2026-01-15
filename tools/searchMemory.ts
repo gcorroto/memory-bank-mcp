@@ -4,6 +4,8 @@
  */
 
 import { IndexManager } from "../common/indexManager.js";
+import { AgentBoard } from "../common/agentBoard.js";
+import { sessionLogger } from "../common/sessionLogger.js";
 
 export interface SearchMemoryParams {
   projectId: string;          // Project identifier (REQUIRED)
@@ -12,6 +14,7 @@ export interface SearchMemoryParams {
   minScore?: number;          // Minimum similarity score (default: 0.4)
   filterByFile?: string;      // Filter by file path pattern
   filterByLanguage?: string;  // Filter by language
+  agentId?: string;           // Agent identifier for session logging
 }
 
 export interface SearchResult {
@@ -38,7 +41,8 @@ export interface SearchMemoryResult {
  */
 export async function searchMemory(
   params: SearchMemoryParams,
-  indexManager: IndexManager
+  indexManager: IndexManager,
+  workspaceRoot?: string
 ): Promise<SearchMemoryResult> {
   try {
     if (!params.query || params.query.trim() === "") {
@@ -72,6 +76,32 @@ export async function searchMemory(
       filterByLanguage: params.filterByLanguage,
     });
     
+    // Session Logging
+    if (params.agentId && workspaceRoot) {
+      try {
+        const board = new AgentBoard(workspaceRoot, params.projectId);
+        const sessionId = await board.getSessionId(params.agentId);
+        
+        if (sessionId) {
+          await sessionLogger.logSessionEvent(params.projectId, sessionId, {
+            timestamp: new Date().toISOString(),
+            type: 'search',
+            data: {
+              query: params.query,
+              filters: {
+                file: params.filterByFile,
+                lang: params.filterByLanguage
+              },
+              resultCount: results.length,
+              topResults: results.slice(0, 5).map(r => ({ path: r.filePath, score: r.score }))
+            }
+          });
+        }
+      } catch (logError) {
+        console.error(`Failed to log search session: ${logError}`);
+      }
+    }
+
     console.error(`Found ${results.length} result(s)`);
     
     // Format message
