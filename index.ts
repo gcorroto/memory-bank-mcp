@@ -86,6 +86,8 @@ import { initializeMemoryBank, initializeMemoryBankToolDefinition } from "./tool
 import { updateContext, updateContextToolDefinition } from "./tools/updateContext.js";
 import { recordDecision, recordDecisionToolDefinition } from "./tools/recordDecision.js";
 import { trackProgress, trackProgressToolDefinition } from "./tools/trackProgress.js";
+import { manageAgentsTool, manageAgentsToolDefinition } from "./tools/manageAgents.js";
+
 
 import { VERSION } from "./common/version.js";
 
@@ -617,6 +619,41 @@ server.tool(
     };
   }
 );
+
+// Tool: Manage Agents
+server.tool(
+  manageAgentsToolDefinition.name,
+  manageAgentsToolDefinition.description,
+  {
+    projectId: z.string().describe("Identificador único del proyecto (OBLIGATORIO)"),
+    action: z.enum(["register", "update_status", "claim_resource", "release_resource", "get_board"]).describe("Acción a realizar"),
+    agentId: z.string().optional().describe("Identificador del agente (ej: 'dev-agent-1'). Requerido para escrituras."),
+    status: z.string().optional().describe("Estado del agente (para update_status)."),
+    focus: z.string().optional().describe("Tarea o fichero en el que se enfoca (para update_status)."),
+    resource: z.string().optional().describe("Identificador del recurso a bloquear (ej: 'src/auth/')."),
+  },
+  async (args) => {
+    const workspaceRoot = process.cwd();
+    
+    if ((args.action === 'register' || args.action === 'update_status') && !args.agentId) {
+       throw new Error(`agentId is required for action ${args.action}`);
+    }
+
+    const result = await manageAgentsTool({
+        projectId: args.projectId,
+        action: args.action as any,
+        agentId: args.agentId,
+        status: args.status,
+        focus: args.focus,
+        resource: args.resource
+    }, workspaceRoot);
+    
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
 
 // ==========================================
 // MCP Resources (Direct document access)

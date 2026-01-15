@@ -13,6 +13,16 @@ This project uses Memory Bank MCP as a **RAG system** (Retrieval-Augmented Gener
 
 ### ⚠️ CRITICAL RULES - MUST FOLLOW
 
+#### Rule 0: COORDINATE WITH OTHER AGENTS
+
+**BEFORE starting any task, you MUST check the Agent Board.** This prevents multiple agents from modifying the same files simultaneously or duplicating work.
+
+1. **Check Board**: Use `memorybank_manage_agents` with `action: "get_board"` to see active agents/locks.
+2. **Register**: Identity yourself (e.g., `dev-1`). If needed: `action: "register"`.
+3. **Claim Task**: `action: "claim_resource"` for the file/feature you are working on.
+4. **Work**: Perform your task (Search -> Implement -> Index).
+5. **Release**: `action: "release_resource"` when done.
+
 #### Rule 1: ALWAYS SEARCH BEFORE IMPLEMENTING
 
 **NEVER write code without first consulting the Memory Bank.**
@@ -70,6 +80,7 @@ This project uses Memory Bank MCP as a **RAG system** (Retrieval-Augmented Gener
 | `memorybank_update_context` | Update session context |
 | `memorybank_record_decision` | Record decisions |
 | `memorybank_track_progress` | Track progress |
+| `memorybank_manage_agents` | Coordination & locking |
 
 #### MCP Resources
 | Resource URI | Content |
@@ -99,7 +110,15 @@ CONFIRM TO USER
 
 ### Session Start
 
-1. **Initialize if first time**:
+1. **Establish Identity** (CRITICAL):
+   - Pick a unique ID: `{Role}-{IDE}-{Model}-{ShortHash}`
+   - Examples: `Dev-VSCode-GPT4-8A2F`, `Arch-Cursor-Claude3.5-9B1C`.
+   - Register:
+   ```json
+   { "projectId": "{{PROJECT_ID}}", "action": "register", "agentId": "Dev-VSCode-GPT4-8A2F" }
+   ```
+
+2. **Initialize if first time**:
 ```json
 // memorybank_initialize - Creates basic templates (no AI, instant)
 {
@@ -110,7 +129,7 @@ CONFIRM TO USER
 ```
 > After indexing, run `memorybank_generate_project_docs` to replace with AI docs.
 
-2. **Get active context**:
+3. **Get active context**:
 ```json
 // memorybank_get_project_docs
 {
@@ -119,7 +138,7 @@ CONFIRM TO USER
 }
 ```
 
-3. **Update session**:
+4. **Update session**:
 ```json
 // memorybank_update_context
 {

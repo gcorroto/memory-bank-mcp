@@ -2,9 +2,8 @@
 
 ## Project Configuration
 
-- **Project ID**: `{{PROJECT_ID}}`
-- **Workspace**: `{{WORKSPACE_PATH}}`
-
+- **Project ID**: `memory_bank_mcp`
+- **Workspace**: `C:\workspaces\grecoLab`
 ---
 
 ## Memory Bank MCP Instructions
@@ -13,16 +12,6 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 
 ### ⚠️ CRITICAL RULES - MUST FOLLOW
 
-#### Rule 0: COORDINATE WITH OTHER AGENTS
-
-**BEFORE starting any task, you MUST check the Agent Board.** This prevents multiple agents from modifying the same files simultaneously or duplicating work.
-
-1. **Check Board**: Use `memorybank_manage_agents` with `action: "get_board"` to see active agents/locks.
-2. **Register**: Identity yourself (e.g., `dev-1`). If needed: `action: "register"`.
-3. **Claim Task**: `action: "claim_resource"` for the file/feature you are working on.
-4. **Work**: Perform your task (Search -> Implement -> Index).
-5. **Release**: `action: "release_resource"` when done.
-
 #### Rule 1: ALWAYS SEARCH BEFORE IMPLEMENTING
 
 **NEVER write code without first consulting the Memory Bank.** This prevents hallucinations and ensures you understand existing patterns.
@@ -30,7 +19,7 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 ```json
 // memorybank_search - MANDATORY before ANY implementation
 {
-  "projectId": "{{PROJECT_ID}}",
+  "projectId": "memory_bank_mcp",
   "query": "how does [feature/component] work"
 }
 ```
@@ -48,7 +37,7 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 ```json
 // memorybank_index_code - MANDATORY after ANY file change
 {
-  "projectId": "{{PROJECT_ID}}",
+  "projectId": "memory_bank_mcp",
   "path": "path/to/modified/file.ts"
 }
 ```
@@ -82,17 +71,16 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 | `memorybank_update_context` | Update session context |
 | `memorybank_record_decision` | Record technical decisions |
 | `memorybank_track_progress` | Track tasks and progress |
-| `memorybank_manage_agents` | Coordination & locking |
 
 #### MCP Resources (Direct Access)
 | Resource URI | Content |
 |--------------|---------|
-| `memory://{{PROJECT_ID}}/active` | Current session context |
-| `memory://{{PROJECT_ID}}/progress` | Progress tracking |
-| `memory://{{PROJECT_ID}}/decisions` | Decision log |
-| `memory://{{PROJECT_ID}}/context` | Project context |
-| `memory://{{PROJECT_ID}}/patterns` | System patterns |
-| `memory://{{PROJECT_ID}}/brief` | Project brief |
+| `memory://memory_bank_mcp/active` | Current session context |
+| `memory://memory_bank_mcp/progress` | Progress tracking |
+| `memory://memory_bank_mcp/decisions` | Decision log |
+| `memory://memory_bank_mcp/context` | Project context |
+| `memory://memory_bank_mcp/patterns` | System patterns |
+| `memory://memory_bank_mcp/brief` | Project brief |
 
 ---
 
@@ -128,45 +116,31 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 
 At the beginning of each session:
 
-1. **Establish Identity** (CRITICAL for Multi-Agent):
-   - You MUST identify yourself uniquely to prevent conflicts.
-   - Detect your environment (IDE and LLM) if possible.
-   - Generate an ID: `{Role}-{IDE}-{Model}-{ShortHash}`
-     - Examples: `Dev-VSCode-GPT4-8A2F`, `Arch-Cursor-Claude3.5-9B1C`, `Test-Windsurf-Gemini-1A2B`.
-   - Register immediately:
-     ```json
-     {
-       "projectId": "{{PROJECT_ID}}",
-       "action": "register",
-       "agentId": "Dev-VSCode-GPT4-8A2F"
-     }
-     ```
-
-2. **Initialize if first time** (only once per project):
+1. **Initialize if first time** (only once per project):
    ```json
    // memorybank_initialize - Creates basic templates (no AI, instant)
    {
-     "projectId": "{{PROJECT_ID}}",
+     "projectId": "memory_bank_mcp",
      "projectPath": "{{WORKSPACE_PATH}}",
      "projectName": "Project Name"
    }
    ```
    > **Note**: After indexing code, run `memorybank_generate_project_docs` to replace basic templates with AI-generated documentation.
 
-3. **Get active context**:
+2. **Get active context**:
    ```json
    // memorybank_get_project_docs
    {
-     "projectId": "{{PROJECT_ID}}",
+     "projectId": "memory_bank_mcp",
      "document": "activeContext"
    }
    ```
 
-4. **Update session**:
+3. **Update session**:
    ```json
    // memorybank_update_context
    {
-     "projectId": "{{PROJECT_ID}}",
+     "projectId": "memory_bank_mcp",
      "currentSession": {
        "mode": "development",
        "task": "Starting session"
@@ -181,7 +155,7 @@ At the beginning of each session:
 ```json
 // ALWAYS do this BEFORE writing any code
 {
-  "projectId": "{{PROJECT_ID}}",
+  "projectId": "memory_bank_mcp",
   "query": "existing implementation of [what you're about to implement]"
 }
 ```
@@ -199,7 +173,7 @@ Ask yourself:
 ```json
 // ALWAYS do this AFTER modifying files
 {
-  "projectId": "{{PROJECT_ID}}",
+  "projectId": "memory_bank_mcp",
   "path": "path/to/modified/file.ts"
 }
 ```
@@ -207,7 +181,7 @@ Ask yourself:
 For multiple files (a directory):
 ```json
 {
-  "projectId": "{{PROJECT_ID}}",
+  "projectId": "memory_bank_mcp",
   "path": "C:/workspaces/proyecto/src/components/"
 }
 ```
@@ -230,7 +204,7 @@ Note: No need for `forceReindex: true` - the system detects changes via hash aut
 When making significant technical decisions:
 ```json
 {
-  "projectId": "{{PROJECT_ID}}",
+  "projectId": "memory_bank_mcp",
   "decision": {
     "title": "Decision title",
     "description": "What was decided",
@@ -245,7 +219,7 @@ When making significant technical decisions:
 After completing tasks:
 ```json
 {
-  "projectId": "{{PROJECT_ID}}",
+  "projectId": "memory_bank_mcp",
   "progress": {
     "completed": ["Implemented X", "Fixed Y"],
     "inProgress": ["Working on Z"]

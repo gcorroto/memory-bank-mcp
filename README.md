@@ -221,6 +221,20 @@ Edit your MCP configuration file:
 
 Memory Bank includes an intelligent documentation system that generates and maintains structured knowledge about your project using AI with reasoning capabilities.
 
+## 🤖 Multi-Agent Coordination
+
+Memory Bank includes a **Coordination Layer** to support multiple agents (e.g., in different IDEs or parallel sessions) working on the same project without conflicts.
+
+### Workflow
+1. **Check Board**: Agents consult the `Agent Board` before starting work.
+2. **Claim Resource**: Agents "lock" files or tasks they are working on.
+3. **Release**: Agents release locks when finished.
+
+This prevents race conditions and duplicated work across the team.
+
+### Tools
+- `memorybank_manage_agents`: Register, claim/release locks, view board.
+
 ### How Does It Work?
 
 1. **Code Analysis**: The system analyzes indexed code using semantic search
