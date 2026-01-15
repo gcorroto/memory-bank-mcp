@@ -1,20 +1,31 @@
-# AGENTS.md - Memory Bank Auto-Index Mode
+# Memory Bank MCP - Auto-Index Mode
 
 ## Project Configuration
 
 - **Project ID**: `memory_bank_mcp`
-- **Workspace**: `C:\workspaces\grecoLab`
+- **Mode**: Auto-Index (continuous RAG synchronization)
+
 ---
 
-## Memory Bank MCP Instructions
+## Memory Bank Instructions
 
-This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank is a **RAG system** (Retrieval-Augmented Generation) that keeps your knowledge of the codebase accurate and prevents hallucinations.
+This project uses Memory Bank MCP as a **RAG system** (Retrieval-Augmented Generation). It keeps your knowledge accurate and **prevents hallucinations**.
 
 ### ⚠️ CRITICAL RULES - MUST FOLLOW
 
+#### Rule 0: COORDINATE WITH OTHER AGENTS
+
+**BEFORE starting any task, you MUST check the Agent Board.** This prevents multiple agents from modifying the same files simultaneously or duplicating work.
+
+1. **Check Board**: Use `memorybank_manage_agents` with `action: "get_board"` to see active agents/locks.
+2. **Register**: Identity yourself (e.g., `role-ide-model`). Call `action: "register"` with your `agentId`. The system will assign a **Session ID** for tracking context automatically.
+3. **Claim Task**: `action: "claim_resource"` for the file/feature you are working on.
+4. **Work**: Perform your task (Search -> Implement -> Index).
+5. **Release**: `action: "release_resource"` when done.
+
 #### Rule 1: ALWAYS SEARCH BEFORE IMPLEMENTING
 
-**NEVER write code without first consulting the Memory Bank.** This prevents hallucinations and ensures you understand existing patterns.
+**NEVER write code without first consulting the Memory Bank.**
 
 ```json
 // memorybank_search - MANDATORY before ANY implementation
@@ -24,15 +35,15 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 }
 ```
 
-**Examples of when to search:**
-- Before implementing a new feature → Search for similar patterns
-- Before modifying existing code → Search for usages and dependencies
-- Before answering questions → Search for accurate information
+**When to search:**
+- Before implementing anything → Search for similar patterns
+- Before modifying code → Search for usages and dependencies  
+- Before answering questions → Search for accurate info
 - Before suggesting architecture → Search for existing patterns
 
 #### Rule 2: ALWAYS REINDEX AFTER MODIFYING
 
-**IMMEDIATELY after modifying ANY file, you MUST reindex it.** This keeps the RAG updated and accurate.
+**IMMEDIATELY after modifying ANY file, reindex it.**
 
 ```json
 // memorybank_index_code - MANDATORY after ANY file change
@@ -42,136 +53,135 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 }
 ```
 
-**No exceptions.** If you modify a file and don't reindex, the Memory Bank becomes stale and you risk hallucinations.
+**No exceptions.** Keeps the RAG updated and accurate.
+
+#### Rule 3: RESPECT PROJECT BOUNDARIES
+
+**You own `memory_bank_mcp`. Do NOT modify other projects.**
+- **Discover**: `memorybank_discover_projects` to find other agents.
+- **Delegate**: `memorybank_delegate_task` to hand off work.
 
 ---
 
 ### Available Tools
 
-#### Core Memory Bank (Semantic RAG - USE CONSTANTLY)
-| Tool | Description | When to Use |
-|------|-------------|-------------|
-| `memorybank_search` | Semantic search in code | **BEFORE any implementation** |
-| `memorybank_index_code` | Index/reindex files | **AFTER any modification** |
-| `memorybank_read_file` | Read file contents | When search results need more context |
-| `memorybank_write_file` | Write with auto-reindex | Alternative to manual write+index |
-| `memorybank_get_stats` | Index statistics | Check coverage |
-| `memorybank_analyze_coverage` | Coverage analysis | Find unindexed areas |
+#### Core Memory Bank (Semantic RAG)
+| Tool | When to Use |
+|------|-------------|
+| `memorybank_search` | **BEFORE any implementation** |
+| `memorybank_index_code` | **AFTER any modification** |
+| `memorybank_read_file` | When need full file context |
+| `memorybank_write_file` | Write with auto-reindex |
 
-#### Project Knowledge Layer (AI Documentation)
+#### Multi-Project
 | Tool | Description |
 |------|-------------|
-| `memorybank_generate_project_docs` | Generate AI docs (replaces basic templates with rich content) |
+| `memorybank_manage_agents` | Coordination & locking |
+| `memorybank_discover_projects` | Find other projects |
+| `memorybank_delegate_task` | Handoff work |
+
+#### Project Knowledge Layer
+| Tool | Description |
+|------|-------------|
+| `memorybank_generate_project_docs` | Generate AI docs (replaces templates) |
 | `memorybank_get_project_docs` | Read project documentation |
 
-#### Context Management (Session Tracking)
+#### Context Management
 | Tool | Description |
 |------|-------------|
-| `memorybank_initialize` | Create basic templates for new project (no AI, instant) |
+| `memorybank_initialize` | Create basic templates (no AI, instant) |
 | `memorybank_update_context` | Update session context |
-| `memorybank_record_decision` | Record technical decisions |
-| `memorybank_track_progress` | Track tasks and progress |
+| `memorybank_record_decision` | Record decisions |
+| `memorybank_track_progress` | Track progress |
+| `memorybank_manage_agents` | Coordination & locking |
 
-#### MCP Resources (Direct Access)
+#### MCP Resources
 | Resource URI | Content |
 |--------------|---------|
-| `memory://memory_bank_mcp/active` | Current session context |
-| `memory://memory_bank_mcp/progress` | Progress tracking |
-| `memory://memory_bank_mcp/decisions` | Decision log |
+| `memory://memory_bank_mcp/active` | Session context |
+| `memory://memory_bank_mcp/progress` | Progress |
+| `memory://memory_bank_mcp/decisions` | Decisions |
 | `memory://memory_bank_mcp/context` | Project context |
-| `memory://memory_bank_mcp/patterns` | System patterns |
-| `memory://memory_bank_mcp/brief` | Project brief |
 
 ---
 
-### Workflow: The RAG Loop
+### The RAG Loop (ALWAYS FOLLOW)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    THE RAG LOOP (ALWAYS)                    │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  1. USER REQUEST                                            │
-│         ↓                                                   │
-│  2. SEARCH MEMORY BANK ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐               │
-│     - memorybank_search (related code)      │               │
-│     - memorybank_get_project_docs (if needed) │             │
-│         ↓                                   │               │
-│  3. UNDERSTAND EXISTING CODE                │               │
-│     - Read search results                   │               │
-│     - memorybank_read_file (if need more)   │               │
-│         ↓                                   │               │
-│  4. IMPLEMENT CHANGES                       │               │
-│     - Follow existing patterns found        │               │
-│         ↓                                   │               │
-│  5. REINDEX IMMEDIATELY ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘               │
-│     - memorybank_index_code (MANDATORY)                     │
-│         ↓                                                   │
-│  6. CONFIRM TO USER                                         │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+USER REQUEST
+    ↓
+SEARCH MEMORY BANK ←──────────────┐
+    ↓                             │
+UNDERSTAND EXISTING CODE          │
+    ↓                             │
+IMPLEMENT CHANGES                 │
+    ↓                             │
+REINDEX IMMEDIATELY ──────────────┘
+    ↓
+CONFIRM TO USER
 ```
 
 ### Session Start
 
-At the beginning of each session:
-
-1. **Initialize if first time** (only once per project):
+1. **Establish Identity** (CRITICAL):
+   - Pick a unique ID: `{Role}-{IDE}-{Model}-{ShortHash}`
+   - Register (System assigns Session ID automatically):
    ```json
-   // memorybank_initialize - Creates basic templates (no AI, instant)
-   {
-     "projectId": "memory_bank_mcp",
-     "projectPath": "{{WORKSPACE_PATH}}",
-     "projectName": "Project Name"
-   }
+   { "projectId": "memory_bank_mcp", "action": "register", "agentId": "Dev-VSCode-GPT4-8A2F" }
    ```
-   > **Note**: After indexing code, run `memorybank_generate_project_docs` to replace basic templates with AI-generated documentation.
+   - **Pass `agentId` in all future tool calls**.
 
-2. **Get active context**:
-   ```json
-   // memorybank_get_project_docs
-   {
-     "projectId": "memory_bank_mcp",
-     "document": "activeContext"
-   }
-   ```
+2. **Initialize if first time**:
+```json
+// memorybank_initialize - Creates basic templates (no AI, instant)
+{
+  "projectId": "memory_bank_mcp",
+  "projectPath": "C:\\workspaces\\grecoLab",
+  "projectName": "Project Name"
+}
+```
+> After indexing, run `memorybank_generate_project_docs` to replace with AI docs.
 
-3. **Update session**:
-   ```json
-   // memorybank_update_context
-   {
-     "projectId": "memory_bank_mcp",
-     "currentSession": {
-       "mode": "development",
-       "task": "Starting session"
-     }
-   }
-   ```
+3. **Get active context**:
+```json
+// memorybank_get_project_docs
+{
+  "projectId": "memory_bank_mcp",
+  "document": "activeContext"
+}
+```
+
+4. **Update session**:
+```json
+// memorybank_update_context
+{
+  "projectId": "memory_bank_mcp",
+  "currentSession": { "mode": "development", "task": "Starting" }
+}
+```
 
 ### Before ANY Implementation
 
 **STOP. Did you search first?**
 
 ```json
-// ALWAYS do this BEFORE writing any code
 {
   "projectId": "memory_bank_mcp",
   "query": "existing implementation of [what you're about to implement]"
 }
 ```
 
-Ask yourself:
-- ✅ Did I search for similar existing code?
-- ✅ Did I search for related patterns?
-- ✅ Did I search for potential dependencies?
-- ✅ Do I understand how this fits in the existing codebase?
+Checklist:
+- ✅ Searched for similar existing code?
+- ✅ Searched for related patterns?
+- ✅ Searched for dependencies?
+- ✅ Understand how it fits in codebase?
 
 ### After ANY Modification
 
 **STOP. Did you reindex?**
 
 ```json
-// ALWAYS do this AFTER modifying files
 {
   "projectId": "memory_bank_mcp",
   "path": "path/to/modified/file.ts"
@@ -182,47 +192,44 @@ For multiple files (a directory):
 ```json
 {
   "projectId": "memory_bank_mcp",
-  "path": "C:/workspaces/proyecto/src/components/"
+  "path": "C:/workspaces/proyecto/src/"
 }
 ```
 
-Note: No need for `forceReindex: true` - the system detects changes via hash automatically.
+Note: No need for `forceReindex` - changes are detected via hash automatically.
 
 ### Why This Matters
 
-| Without RAG Loop | With RAG Loop |
-|------------------|---------------|
-| ❌ Hallucinate APIs that don't exist | ✅ Use actual existing APIs |
-| ❌ Create duplicate code | ✅ Reuse existing patterns |
-| ❌ Break existing conventions | ✅ Follow project standards |
-| ❌ Outdated knowledge | ✅ Always current codebase state |
+| Without RAG | With RAG |
+|-------------|----------|
+| ❌ Hallucinate non-existent APIs | ✅ Use actual APIs |
+| ❌ Duplicate existing code | ✅ Reuse patterns |
+| ❌ Break conventions | ✅ Follow standards |
+| ❌ Outdated knowledge | ✅ Current state |
 
 ---
 
 ### Recording Decisions
 
-When making significant technical decisions:
 ```json
 {
   "projectId": "memory_bank_mcp",
   "decision": {
     "title": "Decision title",
     "description": "What was decided",
-    "rationale": "Why (based on search results)",
-    "category": "architecture"
+    "rationale": "Why (based on search)"
   }
 }
 ```
 
 ### Progress Tracking
 
-After completing tasks:
 ```json
 {
   "projectId": "memory_bank_mcp",
   "progress": {
-    "completed": ["Implemented X", "Fixed Y"],
-    "inProgress": ["Working on Z"]
+    "completed": ["Task X"],
+    "inProgress": ["Task Y"]
   }
 }
 ```
@@ -239,25 +246,23 @@ After completing tasks:
 - Test: `npm test`
 
 ### Code Style
-- Follow existing patterns in the codebase
-- Use TypeScript strict mode
-- Prefer functional patterns
+- Follow existing patterns
+- TypeScript strict mode
+- Functional patterns
 
 ### Important Directories
 - `src/` - Source code
 - `tests/` - Test files
-- `docs/` - Documentation
 
 ---
 
 ## Summary
 
-| Action | Tool | Mandatory |
-|--------|------|-----------|
+| Action | Tool | Required |
+|--------|------|----------|
 | Before implementing | `memorybank_search` | ✅ ALWAYS |
 | After modifying | `memorybank_index_code` | ✅ ALWAYS |
-| Session start | `memorybank_initialize` | Once per project |
+| Session start | `memorybank_initialize` | Once |
 | Track progress | `memorybank_track_progress` | Recommended |
-| Record decisions | `memorybank_record_decision` | Recommended |
 
-**Remember: The Memory Bank is your source of truth. Consult it constantly, keep it updated always.**
+**The Memory Bank is your source of truth. Consult constantly, update always.**

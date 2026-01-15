@@ -1,4 +1,5 @@
 import { AgentBoard } from '../common/agentBoard.js';
+import { RegistryManager } from '../common/registryManager.js';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
@@ -25,10 +26,27 @@ export async function manageAgentsTool(params: ManageAgentsParams, workspaceRoot
                 if (!agentId) throw new Error('agentId is required for register');
                 
                 // Auto-generate session ID if not provided.
-                // This abstracts the session management from the agent.
                 const effectiveSessionId = sessionId || crypto.randomUUID();
                 
+                // 1. Register agent on local board
                 await board.registerAgent(agentId, effectiveSessionId);
+
+                // 2. Ensure project is registered in Global Registry
+                try {
+                    const registry = new RegistryManager();
+                    // We try to infer keywords or description, but for now we keep it simple.
+                    // If the project is already registered, this updates the "lastActive" timestamp.
+                    await registry.registerProject(
+                        projectId, 
+                        workspaceRoot, 
+                        `Auto-registered via Agent ${agentId}`,
+                        ['auto-discovered']
+                    );
+                } catch (err) {
+                    console.error(`Failed to auto-register project in global registry: ${err}`);
+                    // We don't fail the agent registration if global registry fails (e.g. permission issues)
+                }
+
                 return { 
                     success: true, 
                     message: `Agent ${agentId} registered`,
