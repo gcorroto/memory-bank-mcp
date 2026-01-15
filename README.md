@@ -53,6 +53,12 @@ With Memory Bank, AIs:
 - **📊 Progress Tracking**: Manages tasks, milestones, and blockers
 - **📡 MCP Resources**: Direct read-only access to documents via URIs
 
+### Multi-Agent Coordination (Team Sync) 🤖
+- **🚦 Traffic Control**: Prevents multiple agents from modifying the same files simultaneously
+- **📌 Agent Board**: Centralized view of active agents, claimed tasks, and locked files
+- **🆔 Identity Management**: Tracks who is doing what (GitHub Copilot, Cursor, etc.)
+- **🔒 Atomic Locks**: File-system based locking safe across different processes/IDEs
+
 ## 📋 Requirements
 
 - **Node.js** >= 18.0.0
@@ -221,20 +227,6 @@ Edit your MCP configuration file:
 
 Memory Bank includes an intelligent documentation system that generates and maintains structured knowledge about your project using AI with reasoning capabilities.
 
-## 🤖 Multi-Agent Coordination
-
-Memory Bank includes a **Coordination Layer** to support multiple agents (e.g., in different IDEs or parallel sessions) working on the same project without conflicts.
-
-### Workflow
-1. **Check Board**: Agents consult the `Agent Board` before starting work.
-2. **Claim Resource**: Agents "lock" files or tasks they are working on.
-3. **Release**: Agents release locks when finished.
-
-This prevents race conditions and duplicated work across the team.
-
-### Tools
-- `memorybank_manage_agents`: Register, claim/release locks, view board.
-
 ### How Does It Work?
 
 1. **Code Analysis**: The system analyzes indexed code using semantic search
@@ -315,6 +307,58 @@ Reads generated documentation.
 ### Auto-Update Documentation
 
 If you configure `MEMORYBANK_AUTO_UPDATE_DOCS=true`, documents will be automatically regenerated after each indexing. This is useful for keeping documentation always up to date but consumes more API tokens.
+
+---
+
+## 🤖 Multi-Agent Coordination
+
+Memory Bank includes a **Coordination Layer** to support multiple agents (e.g., in different IDEs, parallel sessions, or team members) working on the same project without conflicts.
+
+### Why is this needed?
+When you have multiple AI agents (e.g., one in VS Code, one in Cursor, one in Windsurf) or multiple developers working on the same codebase, they often collide:
+- Modifying the same file simultaneously
+- Duplicating work
+- Halucinating that a task is "todo" when someone else is already doing it
+
+### How It Works
+
+1.  **Agent Board (`agentBoard.md`)**: A central "whiteboard" in the `.memorybank/` folder that tracks active agents and locks.
+2.  **Protocol**: Agents follow a strict "Check -> Claim -> Work -> Release" protocol.
+3.  **Atomic Locks**: Uses file-system based locking (`.lock` directories) to ensure safety even across different processes and machines accessing the same filesystem.
+
+### Workflow
+
+1.  **Check Board**: Agents consult the `Agent Board` before starting work.
+2.  **Register Identity**: Agents identify themselves (e.g., `Dev-VSCode-GPT4-8A2F`).
+3.  **Claim Resource**: Agents "lock" files or tasks they are working on.
+4.  **Work & Release**: Agents work on the task and release the lock when finished (or when the lock expires/stales).
+
+### New Tool: `memorybank_manage_agents`
+
+This tool allows agents to interact with the board:
+
+```json
+// Register on the board
+{
+  "projectId": "my-project",
+  "action": "register",
+  "agentId": "Dev-VSCode-GPT4-8A2F"
+}
+
+// See what others are doing
+{
+  "projectId": "my-project",
+  "action": "get_board"
+}
+
+// Claim a task/file
+{
+  "projectId": "my-project",
+  "action": "claim_resource",
+  "agentId": "Dev-VSCode-GPT4-8A2F",
+  "resource": "src/auth/login.ts"
+}
+```
 
 ---
 
