@@ -56,8 +56,11 @@ export class AgentBoard {
             const requests = this.parseTable(content, 'External Requests');
             
             const now = new Date().toISOString();
+            // Sanitize context to fit in a table cell (no newlines, escape pipes)
+            const safeContext = context.replace(/[\r\n]+/g, '<br/>').replace(/\|/g, '\\|');
+
             // Columns: ID, Title, From Project, Context, Status, Received At
-            requests.push([taskId, title, fromProject, context, 'PENDING', now]);
+            requests.push([taskId, title, fromProject, safeContext, 'PENDING', now]);
             
             return this.updateTable(content, 'External Requests', ['ID', 'Title', 'From Project', 'Context', 'Status', 'Received At'], requests);
         });
@@ -297,8 +300,13 @@ export class AgentBoard {
                 const cols = line.split('|').map(c => c.trim()).filter(c => c !== '');
                 if (cols.length > 0) {
                      // Check if it's the header row
-                    if (result.length === 0 && (line.toLowerCase().includes('agent id') || line.toLowerCase().includes('file pattern'))) {
-                        // skip header detection logic for simplicity, we pass headers in update
+                    if (result.length === 0) {
+                        const firstCol = cols[0].toLowerCase();
+                        if (firstCol.includes('agent id') || firstCol.includes('file pattern') || firstCol === 'id') {
+                            // skip header 
+                        } else {
+                            result.push(cols);
+                        }
                     } else {
                          result.push(cols);
                     }

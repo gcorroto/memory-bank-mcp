@@ -27,6 +27,27 @@ export interface InitializeMemoryBankResult {
  * Document templates for initialization
  */
 const DOCUMENT_TEMPLATES = {
+  agentBoard: () => `# Multi-Agent Board
+
+## Active Agents
+| Agent ID | Status | Current Focus | Session ID | Last Heartbeat |
+|---|---|---|---|---|
+
+## Pending Tasks
+| ID | Title | Assigned To | From | Status | Created At |
+|---|---|---|---|---|---|
+
+## External Requests
+| ID | Title | From Project | Context | Status | Received At |
+|---|---|---|---|---|---|
+
+## File Locks
+| File Pattern | Claimed By | Since |
+|---|---|---|
+
+## Agent Messages
+- [System]: Board initialized
+`,
   projectBrief: (projectName: string, description: string, date: string) => `# Project Brief
 
 ## Project Overview
@@ -359,6 +380,7 @@ export async function initializeMemoryBank(
     "activeContext.md": DOCUMENT_TEMPLATES.activeContext(name, date),
     "progress.md": DOCUMENT_TEMPLATES.progress(name, date),
     "decisionLog.md": DOCUMENT_TEMPLATES.decisionLog(name, date),
+    "agentBoard.md": DOCUMENT_TEMPLATES.agentBoard(),
   };
   
   for (const [filename, content] of Object.entries(documents)) {
