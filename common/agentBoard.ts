@@ -27,6 +27,99 @@ export class AgentBoard {
         this.lockManager = new LockManager(basePath);
     }
 
+    async getBoardContent(): Promise<string> {
+        await this.ensureBoardExists();
+        return await fs.readFile(this.getBoardPath(), 'utf-8');
+    }
+
+    // --- Task Management Methods ---
+
+    async createTask(title: string, fromAgentId: string, assignedTo: string, description: string): Promise<string> {
+        const taskId = `TASK-${Date.now().toString().slice(-6)}`;
+        await this.updateBoard((content) => {
+            const tasks = this.parseTable(content, 'Pending Tasks');
+            
+            const now = new Date().toISOString();
+            // Columns: ID, Title, Assigned To, From, Status, Created At
+            tasks.push([taskId, title, assignedTo, fromAgentId, 'PENDING', now]);
+            
+            return this.updateTable(content, 'Pending Tasks', ['ID', 'Title', 'Assigned To', 'From', 'Status', 'Created At'], tasks);
+        });
+        
+        await this.logMessage(fromAgentId, `Created task ${taskId}: ${title}`);
+        return taskId;
+    }
+
+    async createExternalTask(title: string, fromProject: string, context: string): Promise<string> {
+        const taskId = `EXT-${Date.now().toString().slice(-6)}`;
+        await this.updateBoard((content) => {
+            const requests = this.parseTable(content, 'External Requests');
+            
+            const now = new Date().toISOString();
+            // Columns: ID, Title, From Project, Context, Status, Received At
+            requests.push([taskId, title, fromProject, context, 'PENDING', now]);
+            
+            return this.updateTable(content, 'External Requests', ['ID', 'Title', 'From Project', 'Context', 'Status', 'Received At'], requests);
+        });
+        
+        await this.logMessage('SYSTEM', `Received external prompt from project ${fromProject}: ${title}`);
+        return taskId;
+    }
+
+    async completeTask(taskId: string, agentId: string): Promise<void> {
+        await this.updateBoard((content) => {
+            let tasks = this.parseTable(content, 'Pending Tasks');
+            const initialCount = tasks.length;
+            tasks = tasks.filter(t => t[0] !== taskId);
+            
+            if (tasks.length < initialCount) {
+                 return this.updateTable(content, 'Pending Tasks', ['ID', 'Title', 'Assigned To', 'From', 'Status', 'Created At'], tasks);
+            }
+
+            // Check external requests if not found in pending
+            let requests = this.parseTable(content, 'External Requests');
+            requests = requests.filter(t => t[0] !== taskId);
+            return this.updateTable(content, 'External Requests', ['ID', 'Title', 'From Project', 'Context', 'Status', 'Received At'], requests);
+        });
+        await this.logMessage(agentId, `Completed task ${taskId}`);
+    }
+
+    async logMessage(agentId: string, message: string): Promise<void> {
+        await this.updateBoard((content) => {
+            const lines = content.split('\n');
+            let msgSectionIdx = -1;
+            
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].trim().startsWith('## Agent Messages')) {
+                    msgSectionIdx = i;
+                    break;
+                }
+            }
+
+            const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+            const msgLine = `- [${timestamp}] **${agentId}**: ${message}`;
+
+            if (msgSectionIdx !== -1) {
+                // Determine insertion point (after header)
+                lines.splice(msgSectionIdx + 1, 0, msgLine);
+                
+                // Truncate logs if too long (keep last 20)
+                let nextHeaderIdx = -1;
+                 for (let j = msgSectionIdx + 2; j < lines.length; j++) {
+                    if (lines[j].startsWith('## ')) {
+                        nextHeaderIdx = j;
+                        break;
+                    }
+                }
+                const endOfMessages = nextHeaderIdx === -1 ? lines.length : nextHeaderIdx;
+                if (endOfMessages - (msgSectionIdx + 1) > 20) {
+                     lines.splice(endOfMessages - 1, 1);
+                }
+            }
+            return lines.join('\n');
+        });
+    }
+
     private getBoardPath(): string {
         return path.join(this.basePath, '.memorybank', 'projects', this.projectId, 'docs', 'agentBoard.md');
     }
@@ -41,6 +134,14 @@ export class AgentBoard {
 ## Active Agents
 | Agent ID | Status | Current Focus | Session ID | Last Heartbeat |
 |---|---|---|---|---|
+
+## Pending Tasks
+| ID | Title | Assigned To | From | Status | Created At |
+|---|---|---|---|---|---|
+
+## External Requests
+| ID | Title | From Project | Context | Status | Received At |
+|---|---|---|---|---|---|
 
 ## File Locks
 | File Pattern | Claimed By | Since |
@@ -155,10 +256,7 @@ export class AgentBoard {
         });
     }
 
-    async getBoardContent(): Promise<string> {
-        await this.ensureBoardExists();
-        return await fs.readFile(this.getBoardPath(), 'utf-8');
-    }
+    // [Duplicate getBoardContent removed]
 
     // --- Helpers ---
 

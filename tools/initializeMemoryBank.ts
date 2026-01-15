@@ -5,6 +5,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { RegistryManager } from "../common/registryManager.js";
 
 export interface InitializeMemoryBankParams {
   projectId: string;
@@ -333,6 +334,20 @@ export async function initializeMemoryBank(
   console.error(`Creating directory: ${docsPath}`);
   fs.mkdirSync(docsPath, { recursive: true });
   
+  // Register project globally
+  try {
+      const registry = new RegistryManager();
+      await registry.registerProject(
+          projectId, 
+          projectPath, 
+          description,
+          projectName ? [projectName] : []
+      );
+      console.error(`  Global registry updated.`);
+  } catch (regErr) {
+      console.error(`  Failed to update global registry: ${regErr}`);
+  }
+
   // Create all template documents
   const documentsCreated: string[] = [];
   

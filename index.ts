@@ -87,6 +87,9 @@ import { updateContext, updateContextToolDefinition } from "./tools/updateContex
 import { recordDecision, recordDecisionToolDefinition } from "./tools/recordDecision.js";
 import { trackProgress, trackProgressToolDefinition } from "./tools/trackProgress.js";
 import { manageAgentsTool, manageAgentsToolDefinition } from "./tools/manageAgents.js";
+import { discoverProjectsTool, discoverProjectsToolDefinition } from "./tools/discoverProjects.js";
+import { delegateTaskTool, delegateTaskToolDefinition } from "./tools/delegateTask.js";
+import { RegistryManager } from "./common/registryManager.js";
 
 
 import { VERSION } from "./common/version.js";
@@ -96,6 +99,7 @@ let embeddingService: EmbeddingService;
 let vectorStore: VectorStore;
 let indexManager: IndexManager;
 let projectKnowledgeService: ProjectKnowledgeService;
+let registryManager: RegistryManager;
 let workspaceRoot: string;
 
 // Create the MCP Server
@@ -967,6 +971,19 @@ async function validateEnvironment() {
       indexManager.setProjectKnowledgeService(projectKnowledgeService);
       indexManager.setAutoUpdateDocs(autoUpdateDocs);
       console.error("✓ Project Knowledge service connected to Index Manager");
+
+      // Initialize Registry Manager and register current project
+      try {
+        registryManager = new RegistryManager();
+        // Assuming user defines project ID in env or generic default
+        // We will try to read it from an existing .memorybank config if possible, or pass it later
+        // But here we can't easily know the projectId if it hasn't been initialized by the user.
+        // However, if the user calls initialize_memorybank, we should register it then.
+        console.error("✓ Registry manager initialized");
+      } catch (regError) {
+         console.error(`⚠ Warning: Registry Manager service not available: ${regError}`);
+      }
+
     } catch (error) {
       console.error(`⚠ Warning: Project Knowledge service not available: ${error}`);
       console.error("  Project documentation features will be disabled.");
@@ -979,6 +996,48 @@ async function validateEnvironment() {
   console.error("\n✓ All services ready");
   console.error("");
 }
+
+// Tool: Discover Projects
+server.tool(
+  discoverProjectsToolDefinition.name,
+  discoverProjectsToolDefinition.description,
+  {
+      query: z.string().optional().describe("Término de búsqueda (por ID, descripción o keywords)")
+  },
+  async (args) => {
+    const result = await discoverProjectsTool({
+      query: args.query
+    });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// Tool: Delegate Task
+server.tool(
+  delegateTaskToolDefinition.name,
+  delegateTaskToolDefinition.description,
+  {
+      projectId: z.string().describe("ID del proyecto origen (quien pide)"),
+      targetProjectId: z.string().describe("ID del proyecto destino (quien debe hacer el trabajo)"),
+      title: z.string().describe("Título corto de la tarea"),
+      description: z.string().describe("Descripción detallada de lo que se necesita"),
+      context: z.string().optional().describe("Contexto técnico adicional para que el agente receptor entienda la tarea")
+  },
+  async (args) => {
+    const result = await delegateTaskTool({
+      projectId: args.projectId,
+      targetProjectId: args.targetProjectId,
+      title: args.title,
+      description: args.description,
+      context: args.context || ''
+    });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
 
 /**
  * Starts the stdio server
