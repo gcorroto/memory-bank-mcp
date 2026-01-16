@@ -211,18 +211,28 @@ async function initTreeSitter(): Promise<boolean> {
 
   try {
     // Dynamic import of web-tree-sitter
-    // The module exports the Parser class as default
-    const TreeSitterModule = await import("web-tree-sitter");
-    ParserClass = TreeSitterModule.default;
+    // web-tree-sitter exports Parser as a named export, not default
+    const TreeSitterModule = await import("web-tree-sitter") as any;
+    
+    // Get Parser from named export
+    ParserClass = TreeSitterModule.Parser;
+    
+    if (!ParserClass) {
+      throw new Error('Parser class not found in web-tree-sitter module');
+    }
     
     // Initialize the WASM module
-    await ParserClass.init();
+    if (typeof ParserClass.init === 'function') {
+      await ParserClass.init();
+    }
     
     treeSitterInitialized = true;
     console.error("[AST Chunker] Tree-sitter initialized successfully");
     return true;
   } catch (error) {
     console.error(`[AST Chunker] Failed to initialize Tree-sitter: ${error}`);
+    treeSitterInitialized = false;
+    ParserClass = null;
     return false;
   }
 }
