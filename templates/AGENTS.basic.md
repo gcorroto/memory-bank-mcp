@@ -42,6 +42,7 @@ This project uses Memory Bank MCP for semantic code understanding. You MUST foll
 | `memorybank_update_context` | Update active context with session info |
 | `memorybank_record_decision` | Record technical decisions |
 | `memorybank_track_progress` | Update progress tracking |
+| `memorybank_manage_agents` | Agent registration and coordination |
 
 #### MCP Resources (Direct Access)
 | Resource URI | Content |
@@ -94,6 +95,27 @@ Before answering ANY question or making ANY code change, you MUST:
      "path": "path/to/file.ts"
    }
    ```
+
+### Session Start
+
+At the beginning of each session:
+
+1. **Register** (CRITICAL for tracking):
+   ```json
+   {
+     "projectId": "{{PROJECT_ID}}",
+     "action": "register",
+     "agentId": "Dev-VSCode-GPT4",
+     "workspacePath": "{{WORKSPACE_PATH}}"
+   }
+   ```
+   - The system returns your full agentId with hash suffix
+
+2. **Check Pending Tasks**:
+   ```json
+   { "projectId": "{{PROJECT_ID}}", "action": "get_board" }
+   ```
+   - If tasks with `status: "PENDING"` exist, prioritize them
 
 ### First Time Setup
 

@@ -67,6 +67,7 @@ You MUST use Memory Bank tools for ALL operations:
 | `memorybank_update_context` | Update active context with session info |
 | `memorybank_record_decision` | Record technical decisions |
 | `memorybank_track_progress` | Update progress tracking |
+| `memorybank_manage_agents` | Agent registration and coordination |
 
 #### MCP Resources (Direct Access)
 | Resource URI | Content |
@@ -122,7 +123,24 @@ Note: `memorybank_write_file` automatically reindexes the file when `autoReindex
 
 At the beginning of each session:
 
-1. **Initialize if first time** (only once per project):
+1. **Register** (CRITICAL for tracking):
+   ```json
+   {
+     "projectId": "{{PROJECT_ID}}",
+     "action": "register",
+     "agentId": "Dev-VSCode-GPT4",
+     "workspacePath": "{{WORKSPACE_PATH}}"
+   }
+   ```
+   - The system returns your full agentId with hash suffix
+
+2. **Check Pending Tasks**:
+   ```json
+   { "projectId": "{{PROJECT_ID}}", "action": "get_board" }
+   ```
+   - If tasks with `status: "PENDING"` exist, prioritize them
+
+3. **Initialize if first time** (only once per project):
    ```json
    // memorybank_initialize - Creates basic templates (no AI, instant)
    {
@@ -133,7 +151,7 @@ At the beginning of each session:
    ```
    > **Note**: After indexing, run `memorybank_generate_project_docs` to replace templates with AI-generated docs.
 
-2. **Get current project status**:
+4. **Get current project status**:
    ```json
    // memorybank_get_project_docs
    {
@@ -142,7 +160,7 @@ At the beginning of each session:
    }
    ```
 
-3. **Update session context**:
+5. **Update session context**:
    ```json
    // memorybank_update_context
    {
@@ -154,7 +172,7 @@ At the beginning of each session:
    }
    ```
 
-4. **Get project documentation** (for context):
+6. **Get project documentation** (for context):
    ```json
    // memorybank_get_project_docs
    {
