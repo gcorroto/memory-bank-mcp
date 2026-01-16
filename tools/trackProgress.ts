@@ -5,6 +5,8 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { AgentBoard } from "../common/agentBoard.js";
+import { sessionState } from "../common/sessionState.js";
 
 export interface ProgressTasks {
   completed?: string[];
@@ -48,6 +50,7 @@ export interface TrackProgressResult {
     milestones: number;
     blockers: number;
   };
+  createdTasks?: string[]; // Task IDs created in SQLite
 }
 
 /**
@@ -283,6 +286,7 @@ export async function trackProgress(
   
   // Track updated sections
   const updatedSections: string[] = [];
+  const createdTaskIds: string[] = [];
   
   // Merge tasks
   const completed = mergeTasks(existing.completed, progress.completed);
@@ -292,8 +296,35 @@ export async function trackProgress(
   let inProgress = existing.inProgress.filter(t => 
     !progress.completed?.some(c => c.toLowerCase() === t.toLowerCase())
   );
+  
+  // Identify NEW tasks being added to inProgress (not already in existing)
+  const newInProgressTasks = (progress.inProgress || []).filter(
+    task => !existing.inProgress.some(e => e.toLowerCase() === task.toLowerCase())
+  );
+  
   inProgress = mergeTasks(inProgress, progress.inProgress);
   if (progress.inProgress?.length) updatedSections.push("In Progress");
+  
+  // Register NEW inProgress tasks in SQLite for tracking
+  if (newInProgressTasks.length > 0) {
+    try {
+      const board = new AgentBoard(storagePath, projectId);
+      const currentAgent = sessionState.getCurrentAgentId() || 'SYSTEM';
+      
+      for (const taskTitle of newInProgressTasks) {
+        const taskId = await board.createTask(
+          taskTitle,
+          currentAgent,
+          '', // assignedTo (deprecated, ignored)
+          `Task created via track_progress`
+        );
+        createdTaskIds.push(taskId);
+        console.error(`  Created SQLite task: ${taskId} - ${taskTitle}`);
+      }
+    } catch (err) {
+      console.error(`  Warning: Could not create SQLite tasks: ${err}`);
+    }
+  }
   
   const blocked = mergeTasks(existing.blocked, progress.blocked);
   if (progress.blocked?.length) updatedSections.push("Blocked");
@@ -356,14 +387,22 @@ export async function trackProgress(
   
   console.error(`  Updated sections: ${updatedSections.join(", ") || "None"}`);
   console.error(`  Stats: ${JSON.stringify(stats)}`);
+  if (createdTaskIds.length > 0) {
+    console.error(`  Created ${createdTaskIds.length} SQLite task(s): ${createdTaskIds.join(", ")}`);
+  }
   console.error(`\n=== Progress Updated ===`);
+  
+  const taskInfo = createdTaskIds.length > 0 
+    ? ` Created ${createdTaskIds.length} task(s) in SQLite: ${createdTaskIds.join(", ")}.`
+    : "";
   
   return {
     success: true,
-    message: `Progress updated for project "${projectId}". ${updatedSections.length > 0 ? `Updated: ${updatedSections.join(", ")}` : "No changes"}. Stats: ${stats.completed} completed, ${stats.inProgress} in progress, ${stats.upcoming} upcoming.`,
+    message: `Progress updated for project "${projectId}". ${updatedSections.length > 0 ? `Updated: ${updatedSections.join(", ")}` : "No changes"}. Stats: ${stats.completed} completed, ${stats.inProgress} in progress, ${stats.upcoming} upcoming.${taskInfo}`,
     projectId,
     updatedSections,
     stats,
+    createdTasks: createdTaskIds,
   };
 }
 
