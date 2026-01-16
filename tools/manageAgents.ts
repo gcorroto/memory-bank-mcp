@@ -16,9 +16,15 @@ export interface ManageAgentsParams {
 }
 
 export async function manageAgentsTool(params: ManageAgentsParams): Promise<any> {
-    // Use provided workspacePath, or fall back to home directory (will be marked as 'unknown')
-    const workspaceRoot = params.workspacePath || os.homedir();
-    const { projectId, action, agentId, sessionId, status, focus, resource } = params;
+    const { projectId, action, agentId, sessionId, status, focus, resource, workspacePath } = params;
+
+    // For register action, workspacePath is REQUIRED to correctly register the project
+    if (action === 'register' && !workspacePath) {
+        throw new Error('workspacePath is REQUIRED for register action. Please provide the absolute path to the project workspace.');
+    }
+
+    // Use provided workspacePath, or fall back to home directory for non-register actions
+    const workspaceRoot = workspacePath || os.homedir();
 
     const board = new AgentBoard(workspaceRoot, projectId);
 
