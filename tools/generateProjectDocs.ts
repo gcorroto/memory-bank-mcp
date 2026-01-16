@@ -5,6 +5,11 @@
 
 import { ProjectKnowledgeService, ProjectDocType, GenerationResult } from "../common/projectKnowledgeService.js";
 import { VectorStore } from "../common/vectorStore.js";
+import { AgentBoard } from "../common/agentBoard.js";
+import { sessionLogger } from "../common/sessionLogger.js";
+import * as path from "path";
+
+import { sessionState } from "../common/sessionState.js";
 
 export interface GenerateProjectDocsParams {
   projectId?: string;     // Optional project ID to filter chunks
@@ -29,14 +34,40 @@ export interface GenerateProjectDocsResult {
 export async function generateProjectDocs(
   params: GenerateProjectDocsParams,
   projectKnowledgeService: ProjectKnowledgeService,
-  vectorStore: VectorStore
+  vectorStore: VectorStore,
+  workspaceRoot: string = process.cwd() // Add workspaceRoot
 ): Promise<GenerateProjectDocsResult> {
   try {
     console.error("\n=== Generating Project Documentation ===");
-    console.error(`Project ID: ${params.projectId || "default"}`);
-    console.error(`Force regeneration: ${params.force || false}`);
+    const projectId = params.projectId || "default";
+    console.error(`Project ID: ${projectId}`);
     
-    // Get all chunks from the vector store
+    // Fetch Session History via Session State
+    let sessionHistory: string | undefined;
+    const activeAgentId = sessionState.getCurrentAgentId();
+    if (activeAgentId) {
+        try {
+            const board = new AgentBoard(workspaceRoot, projectId);
+            const sessionId = await board.getSessionId(activeAgentId);
+            
+            if (sessionId) {
+                console.error(`Fetching session history for session: ${sessionId}`);
+                const history = await sessionLogger.getSessionHistory(projectId, sessionId);
+                if (history && history.length > 0) {
+                    // Summarize last 20 events
+                    const recentEvents = history.slice(-20);
+                    sessionHistory = recentEvents.map(e => {
+                        const dataStr = JSON.stringify(e.data).slice(0, 200); // Truncate data
+                        return `- [${e.timestamp.split('T')[1].split('.')[0]}] ${e.type}: ${dataStr}`;
+                    }).join('\n');
+                }
+            }
+        } catch (e) {
+            console.error(`Warning: Failed to fetch session history: ${e}`);
+        }
+    }
+
+    console.error(`Force regeneration: ${params.force || false}`);
     const chunks = await vectorStore.getAllChunks(params.projectId);
     
     if (chunks.length === 0) {
@@ -63,11 +94,11 @@ export async function generateProjectDocs(
     console.error(`Found ${chunks.length} code chunks to analyze`);
     
     // Generate documents - projectId is required
-    const projectId = params.projectId || "default";
     const result = await projectKnowledgeService.generateAllDocuments(
       projectId,
       chunks,
-      params.force || false
+      params.force || false,
+      sessionHistory
     );
     
     // Calculate estimated cost (approximate rates for gpt-5-mini)

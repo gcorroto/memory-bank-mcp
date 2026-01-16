@@ -5,6 +5,9 @@
 
 import * as path from "path";
 import { IndexManager } from "../common/indexManager.js";
+import { AgentBoard } from "../common/agentBoard.js";
+import { sessionLogger } from "../common/sessionLogger.js";
+import { sessionState } from "../common/sessionState.js";
 
 export interface IndexCodeParams {
   projectId: string;       // Project identifier (REQUIRED)
@@ -40,6 +43,30 @@ export async function indexCode(
     
     console.error(`\nIndexing code at: ${targetPath}`);
     console.error(`Project ID: ${params.projectId}`);
+    
+    // Session Logging via Session State
+    const activeAgentId = sessionState.getCurrentAgentId();
+    if (activeAgentId) {
+      try {
+        const board = new AgentBoard(workspaceRoot, params.projectId);
+        const sessionId = await board.getSessionId(activeAgentId);
+        
+        if (sessionId) {
+          await sessionLogger.logSessionEvent(params.projectId, sessionId, {
+            timestamp: new Date().toISOString(),
+            type: 'index',
+            data: {
+              path: targetPath,
+              recursive: params.recursive !== false,
+              force: params.forceReindex || false
+            }
+          });
+        }
+      } catch (logError) {
+        console.error(`Failed to log session event: ${logError}`);
+      }
+    }
+
     console.error(`Workspace root: ${workspaceRoot}`);
     console.error(`Recursive: ${params.recursive !== false}`);
     console.error(`Force reindex: ${params.forceReindex || false}`);

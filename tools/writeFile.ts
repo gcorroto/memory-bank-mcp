@@ -6,6 +6,9 @@
 import * as fs from "fs";
 import * as path from "path";
 import { IndexManager } from "../common/indexManager.js";
+import { AgentBoard } from "../common/agentBoard.js";
+import { sessionLogger } from "../common/sessionLogger.js";
+import { sessionState } from "../common/sessionState.js";
 
 export interface WriteFileParams {
   projectId: string;       // Project identifier (REQUIRED for auto-reindex)
@@ -37,6 +40,43 @@ export async function writeFile(
       ? params.path
       : path.join(workspaceRoot, params.path);
     
+    // Auto-Locking & Logging via Session State
+    const activeAgentId = sessionState.getCurrentAgentId();
+    if (activeAgentId) {
+      const board = new AgentBoard(workspaceRoot, params.projectId);
+      
+      // 1. Check/Claim Lock
+      // Normalize path for locking (relative to workspace)
+      const relativePath = path.relative(workspaceRoot, filePath).replace(/\\/g, '/');
+      const canWrite = await board.claimResource(activeAgentId, relativePath);
+      
+      if (!canWrite) {
+        return {
+          success: false,
+          filePath: params.path,
+          message: `File is locked by another agent. Write rejected.`
+        };
+      }
+
+      // 2. Log Session Event
+      try {
+        const sessionId = await board.getSessionId(activeAgentId);
+        if (sessionId) {
+          await sessionLogger.logSessionEvent(params.projectId, sessionId, {
+            timestamp: new Date().toISOString(),
+            type: 'decision',
+            data: {
+              action: 'write_file',
+              path: params.path,
+              byteSize: Buffer.byteLength(params.content, "utf-8")
+            }
+          });
+        }
+      } catch (e) {
+        console.error("Failed to log session event:", e);
+      }
+    }
+
     // Ensure directory exists
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {

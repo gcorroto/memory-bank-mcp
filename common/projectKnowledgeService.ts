@@ -238,14 +238,18 @@ Generate a markdown document useful for setting up the development environment.`
     filename: "activeContext.md",
     title: "Active Context",
     description: "Current development state, recent changes, and work in progress",
-    promptTemplate: `Analyze the following recently modified code chunks and generate an Active Context document.
+    promptTemplate: `Analyze the following recently modified code chunks and current session history to generate an Active Context document.
 
 Document:
-1. **Recent Changes**: What parts of the code were recently modified?
-2. **Work in Progress**: Features or fixes that appear incomplete
-3. **Hot Areas**: Parts of the code with high activity
-4. **Potential Issues**: Code that might need attention (TODOs, FIXMEs)
-5. **Current Focus**: What seems to be the current development focus?
+1. **Current Session Status**: Summary of actions performed in the current session (from history).
+2. **Recent Changes**: What parts of the code were recently modified?
+3. **Work in Progress**: Features or fixes that appear incomplete
+4. **Hot Areas**: Parts of the code with high activity
+5. **Potential Issues**: Code that might need attention (TODOs, FIXMEs)
+6. **Current Focus**: What seems to be the current development focus?
+
+Recent session history:
+{sessionHistory}
 
 Recent code chunks:
 {chunks}
@@ -429,6 +433,10 @@ export class ProjectKnowledgeService {
       .join("|");
     
     return crypto.createHash("md5").update(content).digest("hex");
+  }
+
+  private hashString(str: string): string {
+    return crypto.createHash("md5").update(str).digest("hex");
   }
   
   /**
@@ -781,10 +789,11 @@ ${chunk.content}
     type: ProjectDocType,
     chunks: ChunkRecord[],
     force: boolean = false,
-    previousProgress?: string
+    previousProgress?: string,
+    sessionHistory?: string
   ): Promise<ProjectDoc | null> {
     const definition = DOC_DEFINITIONS[type];
-    const inputHash = this.hashChunks(chunks);
+    const inputHash = this.hashChunks(chunks) + (sessionHistory ? this.hashString(sessionHistory) : 0);
     const docsPath = this.ensureProjectDocsDirectory(projectId);
     const metadataCache = this.loadProjectMetadata(projectId);
     
@@ -805,6 +814,12 @@ ${chunk.content}
     
     let prompt = definition.promptTemplate.replace("{chunks}", preparedChunks.text);
     
+    if (sessionHistory) {
+      prompt = prompt.replace("{sessionHistory}", sessionHistory);
+    } else {
+      prompt = prompt.replace("{sessionHistory}", "No recent session history available.");
+    }
+
     if (type === "progress" && previousProgress) {
       prompt = prompt.replace("{previousProgress}", previousProgress);
     } else {
@@ -850,7 +865,8 @@ ${chunk.content}
   async generateAllDocuments(
     projectId: string,
     chunks: ChunkRecord[],
-    force: boolean = false
+    force: boolean = false,
+    sessionHistory?: string
   ): Promise<GenerationResult> {
     const result: GenerationResult = {
       success: true,
@@ -903,7 +919,8 @@ ${chunk.content}
           docType,
           docChunks,
           force,
-          docType === "progress" ? previousProgress : undefined
+          docType === "progress" ? previousProgress : undefined,
+          sessionHistory
         );
         
         return { docType, doc, isNew, error: null };

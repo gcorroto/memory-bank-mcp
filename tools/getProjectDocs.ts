@@ -6,12 +6,12 @@
 import { ProjectKnowledgeService, ProjectDocType, ProjectDoc } from "../common/projectKnowledgeService.js";
 import { AgentBoard } from "../common/agentBoard.js";
 import { sessionLogger } from "../common/sessionLogger.js";
+import { sessionState } from "../common/sessionState.js";
 
 export interface GetProjectDocsParams {
   projectId: string;      // Project identifier (REQUIRED)
   document?: string;      // Specific document to retrieve (or "all" / "summary")
   format?: "full" | "summary";  // Output format
-  agentId?: string;       // Agent identifier for session logging
 }
 
 export interface GetProjectDocsResult {
@@ -45,24 +45,25 @@ export async function getProjectDocs(
   workspaceRoot?: string
 ): Promise<GetProjectDocsResult> {
   const logSession = async (outputSummary: string) => {
-    if (params.agentId && workspaceRoot) {
+    const activeAgentId = sessionState.getCurrentAgentId();
+    if (activeAgentId && workspaceRoot) {
       try {
         const board = new AgentBoard(workspaceRoot, params.projectId);
-        const sessionId = await board.getSessionId(params.agentId);
+        const sessionId = await board.getSessionId(activeAgentId);
+        
         if (sessionId) {
-          // Use singleton sessionLogger
           await sessionLogger.logSessionEvent(params.projectId, sessionId, {
-              timestamp: new Date().toISOString(),
-              type: 'read_doc',
-              data: {
-                  document: params.document || 'all',
-                  format: params.format || 'full',
-                  summary: outputSummary
-              }
+            timestamp: new Date().toISOString(),
+            type: 'read_doc',
+            data: {
+              document: params.document,
+              format: params.format,
+              summary: outputSummary
+            }
           });
         }
-      } catch (error) {
-        console.error(`Failed to log doc session: ${error}`);
+      } catch (logError) {
+        console.error(`Failed to log read_doc session: ${logError}`);
       }
     }
   };

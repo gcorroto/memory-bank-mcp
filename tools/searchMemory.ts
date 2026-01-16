@@ -6,6 +6,7 @@
 import { IndexManager } from "../common/indexManager.js";
 import { AgentBoard } from "../common/agentBoard.js";
 import { sessionLogger } from "../common/sessionLogger.js";
+import { sessionState } from "../common/sessionState.js";
 
 export interface SearchMemoryParams {
   projectId: string;          // Project identifier (REQUIRED)
@@ -14,7 +15,6 @@ export interface SearchMemoryParams {
   minScore?: number;          // Minimum similarity score (default: 0.4)
   filterByFile?: string;      // Filter by file path pattern
   filterByLanguage?: string;  // Filter by language
-  agentId?: string;           // Agent identifier for session logging
 }
 
 export interface SearchResult {
@@ -76,11 +76,12 @@ export async function searchMemory(
       filterByLanguage: params.filterByLanguage,
     });
     
-    // Session Logging
-    if (params.agentId && workspaceRoot) {
+    // Session Logging via Session State
+    const activeAgentId = sessionState.getCurrentAgentId();
+    if (activeAgentId && workspaceRoot) {
       try {
         const board = new AgentBoard(workspaceRoot, params.projectId);
-        const sessionId = await board.getSessionId(params.agentId);
+        const sessionId = await board.getSessionId(activeAgentId);
         
         if (sessionId) {
           await sessionLogger.logSessionEvent(params.projectId, sessionId, {

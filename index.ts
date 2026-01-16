@@ -185,10 +185,6 @@ server.tool(
       .string()
       .optional()
       .describe("Filtrar resultados por lenguaje de programación (ej: 'typescript', 'python')"),
-    agentId: z
-      .string()
-      .optional()
-      .describe("Identificador del agente (para logging de sesión)"),
   },
   async (args) => {
     const result = await searchMemory(
@@ -199,7 +195,6 @@ server.tool(
         minScore: args.minScore,
         filterByFile: args.filterByFile,
         filterByLanguage: args.filterByLanguage,
-        agentId: args.agentId,
       },
       indexManager,
       workspaceRoot
@@ -230,6 +225,10 @@ Ejemplo: "C:/workspaces/proyecto/src/index.ts"`,
       .number()
       .optional()
       .describe("Línea final (opcional)"),
+    projectId: z
+      .string()
+      .optional()
+      .describe("Identificador del proyecto (Opcional, pero necesario para logging de sesión)"),
   },
   async (args) => {
     const result = await readFile(
@@ -237,6 +236,7 @@ Ejemplo: "C:/workspaces/proyecto/src/index.ts"`,
         path: args.path,
         startLine: args.startLine,
         endLine: args.endLine,
+        projectId: args.projectId,
       },
       workspaceRoot
     );
@@ -389,7 +389,8 @@ server.tool(
         force: args.force,
       },
       projectKnowledgeService,
-      vectorStore
+      vectorStore,
+      workspaceRoot
     );
     
     return {

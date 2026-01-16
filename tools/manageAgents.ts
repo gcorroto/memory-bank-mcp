@@ -1,5 +1,6 @@
 import { AgentBoard } from '../common/agentBoard.js';
 import { RegistryManager } from '../common/registryManager.js';
+import { sessionState } from '../common/sessionState.js';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
@@ -25,6 +26,9 @@ export async function manageAgentsTool(params: ManageAgentsParams, workspaceRoot
             case 'register':
                 if (!agentId) throw new Error('agentId is required for register');
                 
+                // Set Global Session State
+                sessionState.setCurrentAgent(agentId, projectId);
+
                 // Auto-generate session ID if not provided.
                 const effectiveSessionId = sessionId || crypto.randomUUID();
                 

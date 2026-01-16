@@ -129,7 +129,7 @@ CONFIRM TO USER
    ```json
    { "projectId": "{{PROJECT_ID}}", "action": "register", "agentId": "Dev-VSCode-GPT4-8A2F" }
    ```
-   - **Pass `agentId` in all future tool calls**.
+   - **NOTE**: The system holds your `agentId` in memory after registration for locking/logging.
 
 2. **Initialize if first time**:
 ```json
@@ -179,12 +179,28 @@ Checklist:
 
 ### After ANY Modification
 
-**STOP. Did you reindex?**
+**STOP. If you modified a file using ANY tool (except `memorybank_write_file`), you MUST record it.**
 
+If you used `memorybank_write_file`:
+- It reindexes automatically.
+
+If you used VS Code edits or other tools:
+1. **Index the changes**:
 ```json
 {
   "projectId": "{{PROJECT_ID}}",
   "path": "path/to/modified/file.ts"
+}
+```
+
+2. **Log the action** (if not done automatically):
+```json
+// memorybank_update_context
+{
+  "projectId": "{{PROJECT_ID}}",
+  "currentSession": {
+    "task": "Modified file.ts to fix bug X"
+  }
 }
 ```
 
