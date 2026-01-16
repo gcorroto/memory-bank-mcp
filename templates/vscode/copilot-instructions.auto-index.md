@@ -148,7 +148,12 @@ CONFIRM TO USER
    - Pick a unique ID: `{Role}-{IDE}-{Model}` (system adds hash automatically)
    - Register (System assigns Session ID and hash suffix):
    ```json
-   { "projectId": "{{PROJECT_ID}}", "action": "register", "agentId": "Dev-VSCode-GPT4" }
+   { 
+     "projectId": "{{PROJECT_ID}}", 
+     "action": "register", 
+     "agentId": "Dev-VSCode-GPT4",
+     "workspacePath": "{{WORKSPACE_PATH}}"
+   }
    ```
    - The system returns your full agentId with hash (e.g., `Dev-VSCode-GPT4-a1b2c3d4`)
 

@@ -178,7 +178,8 @@ At the beginning of each session:
      {
        "projectId": "{{PROJECT_ID}}",
        "action": "register",
-       "agentId": "Dev-VSCode-GPT4"
+       "agentId": "Dev-VSCode-GPT4",
+       "workspacePath": "{{WORKSPACE_PATH}}"
      }
      ```
    - The system returns your full agentId with hash (e.g., `Dev-VSCode-GPT4-a1b2c3d4`).

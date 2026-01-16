@@ -643,6 +643,7 @@ server.tool(
     status: z.string().optional().describe("Estado del agente (para update_status)."),
     focus: z.string().optional().describe("Tarea o fichero en el que se enfoca (para update_status)."),
     resource: z.string().optional().describe("Identificador del recurso a bloquear (ej: 'src/auth/')."),
+    workspacePath: z.string().optional().describe("RUTA ABSOLUTA al directorio raíz del workspace. IMPORTANTE para registro correcto del proyecto."),
   },
   async (args) => {
     const workspaceRoot = process.cwd();
@@ -651,6 +652,9 @@ server.tool(
        throw new Error(`agentId is required for action ${args.action}`);
     }
 
+    // Use workspacePath from args if provided, otherwise fall back to workspaceRoot
+    const effectiveWorkspace = args.workspacePath || workspaceRoot;
+
     const result = await manageAgentsTool({
         projectId: args.projectId,
         action: args.action as any,
@@ -658,8 +662,9 @@ server.tool(
         sessionId: args.sessionId,
         status: args.status,
         focus: args.focus,
-        resource: args.resource
-    }, workspaceRoot);
+        resource: args.resource,
+        workspacePath: effectiveWorkspace
+    });
     
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

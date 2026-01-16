@@ -2,8 +2,7 @@ import { AgentBoard } from '../common/agentBoard.js';
 import { RegistryManager } from '../common/registryManager.js';
 import { sessionState } from '../common/sessionState.js';
 import { sessionLogger } from '../common/sessionLogger.js';
-
-const WORKSPACE_ROOT = process.cwd(); // Will be overridden by actual workspace logic if passed
+import os from 'os';
 
 export interface ManageAgentsParams {
   projectId: string;
@@ -13,9 +12,12 @@ export interface ManageAgentsParams {
   status?: string;
   focus?: string;
   resource?: string;
+  workspacePath?: string; // The actual project path (should be passed by the agent)
 }
 
-export async function manageAgentsTool(params: ManageAgentsParams, workspaceRoot: string = WORKSPACE_ROOT): Promise<any> {
+export async function manageAgentsTool(params: ManageAgentsParams): Promise<any> {
+    // Use provided workspacePath, or fall back to home directory (will be marked as 'unknown')
+    const workspaceRoot = params.workspacePath || os.homedir();
     const { projectId, action, agentId, sessionId, status, focus, resource } = params;
 
     const board = new AgentBoard(workspaceRoot, projectId);
@@ -112,7 +114,7 @@ export const manageAgentsToolDefinition = {
       },
       action: {
         type: "string",
-        description: "Acción a realizar: register, update_status, claim_resource, release_resource, get_board",
+        description: "Acción a realizar",
         enum: ["register", "update_status", "claim_resource", "release_resource", "get_board"],
       },
       agentId: {
@@ -121,7 +123,7 @@ export const manageAgentsToolDefinition = {
       },
       sessionId: {
         type: "string",
-        description: "Identificador de sesión (opcional, para registro)",
+        description: "UUID de sesión del agente para tracking de contexto.",
       },
       status: {
         type: "string",
@@ -134,6 +136,10 @@ export const manageAgentsToolDefinition = {
       resource: {
         type: "string",
         description: "Identificador del recurso a bloquear (ej: 'src/auth/').",
+      },
+      workspacePath: {
+        type: "string",
+        description: "RUTA ABSOLUTA al directorio raíz del workspace. IMPORTANTE: Debe coincidir con la ruta real del proyecto, no usar rutas relativas.",
       },
     },
     required: ["projectId", "action"],
