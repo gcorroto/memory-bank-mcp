@@ -12,6 +12,7 @@ export interface GetProjectDocsParams {
   projectId: string;      // Project identifier (REQUIRED)
   document?: string;      // Specific document to retrieve (or "all" / "summary")
   format?: "full" | "summary";  // Output format
+  agentId?: string;       // Agent identifier for session logging (optional fallback)
 }
 
 export interface GetProjectDocsResult {
@@ -45,7 +46,15 @@ export async function getProjectDocs(
   workspaceRoot?: string
 ): Promise<GetProjectDocsResult> {
   const logSession = async (outputSummary: string) => {
-    const activeAgentId = sessionState.getCurrentAgentId();
+    let activeAgentId = sessionState.getCurrentAgentId();
+
+    if (!activeAgentId && params.agentId && workspaceRoot) {
+        try {
+            const board = new AgentBoard(workspaceRoot, params.projectId);
+            activeAgentId = await board.resolveActiveAgentId(params.agentId);
+        } catch (e) { /* ignore */ }
+    }
+
     if (activeAgentId && workspaceRoot) {
       try {
         const board = new AgentBoard(workspaceRoot, params.projectId);
@@ -60,7 +69,7 @@ export async function getProjectDocs(
               format: params.format,
               summary: outputSummary
             }
-          });
+          }, activeAgentId);
         }
       } catch (logError) {
         console.error(`Failed to log read_doc session: ${logError}`);
@@ -186,6 +195,10 @@ Complementa la búsqueda semántica precisa (memorybank_search) con visión de a
   inputSchema: {
     type: "object",
     properties: {
+      projectId: {
+        type: "string",
+        description: "Identificador único del proyecto (OBLIGATORIO)",
+      },
       document: {
         type: "string",
         description: "Documento específico a recuperar. Opciones: projectBrief, productContext, systemPatterns, techContext, activeContext, progress, all, summary",
@@ -197,6 +210,11 @@ Complementa la búsqueda semántica precisa (memorybank_search) con visión de a
         description: "Formato de salida: 'full' devuelve contenido completo, 'summary' devuelve resumen de todos los docs",
         default: "full",
       },
+      agentId: {
+        type: "string",
+        description: "Identificador del agente para logging de sesión (opcional)",
+      },
     },
+    required: ["projectId"],
   },
 };

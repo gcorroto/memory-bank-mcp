@@ -60,7 +60,7 @@ export async function indexCode(
               recursive: params.recursive !== false,
               force: params.forceReindex || false
             }
-          });
+          }, activeAgentId);
         }
       } catch (logError) {
         console.error(`Failed to log session event: ${logError}`);

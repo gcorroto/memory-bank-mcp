@@ -58,7 +58,7 @@ export async function readFile(
               path: params.path,
               lines: params.startLine && params.endLine ? `${params.startLine}-${params.endLine}` : 'all'
             }
-          });
+          }, activeAgentId);
         }
       } catch (logError) {
         console.error(`Failed to log session event: ${logError}`);

@@ -1,8 +1,7 @@
 import { AgentBoard } from '../common/agentBoard.js';
 import { RegistryManager } from '../common/registryManager.js';
 import { sessionState } from '../common/sessionState.js';
-import * as path from 'path';
-import * as crypto from 'crypto';
+import { sessionLogger } from '../common/sessionLogger.js';
 
 const WORKSPACE_ROOT = process.cwd(); // Will be overridden by actual workspace logic if passed
 
@@ -26,54 +25,64 @@ export async function manageAgentsTool(params: ManageAgentsParams, workspaceRoot
             case 'register':
                 if (!agentId) throw new Error('agentId is required for register');
                 
-                // Set Global Session State
-                sessionState.setCurrentAgent(agentId, projectId);
-
-                // Auto-generate session ID if not provided.
-                const effectiveSessionId = sessionId || crypto.randomUUID();
+                // Use the new SQLite-based registration which handles hash generation
+                const result = board.registerAgentWithHash(agentId, sessionId);
                 
-                // 1. Register agent on local board
-                await board.registerAgent(agentId, effectiveSessionId);
+                // Set Global Session State with the HASHED ID
+                sessionState.setCurrentAgent(result.agentId, projectId);
 
-                // 2. Ensure project is registered in Global Registry
+                // Log the registration event
+                await sessionLogger.logSessionEvent(projectId, result.sessionId, {
+                    timestamp: new Date().toISOString(),
+                    type: 'tool_call',
+                    data: {
+                        tool: 'manage_agents',
+                        action: 'register',
+                        baseAgentId: agentId,
+                        finalAgentId: result.agentId
+                    }
+                }, result.agentId);
+
+                // Ensure project is registered in Global Registry
                 try {
                     const registry = new RegistryManager();
-                    // We try to infer keywords or description, but for now we keep it simple.
-                    // If the project is already registered, this updates the "lastActive" timestamp.
                     await registry.registerProject(
                         projectId, 
                         workspaceRoot, 
-                        `Auto-registered via Agent ${agentId}`,
+                        `Auto-registered via Agent ${result.agentId}`,
                         ['auto-discovered']
                     );
                 } catch (err) {
                     console.error(`Failed to auto-register project in global registry: ${err}`);
-                    // We don't fail the agent registration if global registry fails (e.g. permission issues)
                 }
 
                 return { 
                     success: true, 
-                    message: `Agent ${agentId} registered`,
-                    sessionId: effectiveSessionId 
+                    message: `Agent ${result.agentId} registered`,
+                    agentId: result.agentId,
+                    sessionId: result.sessionId 
                 };
 
             case 'update_status':
                 if (!agentId) throw new Error('agentId is required for update_status');
-                await board.updateStatus(agentId, status || 'ACTIVE', focus || '-');
-                return { success: true, message: `Agent ${agentId} status updated` };
+                const activeIdStatus = await board.resolveActiveAgentId(agentId);
+                await board.updateStatus(activeIdStatus, status || 'ACTIVE', focus || '-');
+                return { success: true, message: `Agent ${activeIdStatus} status updated` };
 
             case 'claim_resource':
                 if (!agentId || !resource) throw new Error('agentId and resource are required for claim_resource');
-                const claimed = await board.claimResource(agentId, resource);
+                const activeIdClaim = await board.resolveActiveAgentId(agentId);
+                const claimed = await board.claimResource(activeIdClaim, resource);
                 if (claimed) {
-                     return { success: true, message: `Resource ${resource} claimed by ${agentId}` };
+                     return { success: true, message: `Resource ${resource} claimed by ${activeIdClaim}` };
                 } else {
                      return { success: false, message: `Resource ${resource} is already locked` };
                 }
 
             case 'release_resource':
                  if (!agentId || !resource) throw new Error('agentId and resource are required for release_resource');
-                 await board.releaseResource(agentId, resource);
+                 const activeIdRelease = await board.resolveActiveAgentId(agentId);
+                 await board.releaseResource(activeIdRelease, resource);
                  return { success: true, message: `Resource ${resource} released` };
 
             case 'get_board':

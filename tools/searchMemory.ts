@@ -96,7 +96,7 @@ export async function searchMemory(
               resultCount: results.length,
               topResults: results.slice(0, 5).map(r => ({ path: r.filePath, score: r.score }))
             }
-          });
+          }, activeAgentId);
         }
       } catch (logError) {
         console.error(`Failed to log search session: ${logError}`);

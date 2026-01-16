@@ -1,359 +1,239 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { LockManager } from './lockManager.js';
-import { Logger } from './logger.js';
+/**
+ * @fileoverview Agent Board - Unified interface for agent coordination
+ * 
+ * This module provides backward-compatible API while using SQLite internally.
+ * The AgentBoard class maintains the same method signatures but delegates to
+ * AgentBoardSqlite for actual operations.
+ * 
+ * Migration: MD-based storage is deprecated. All operations now use SQLite.
+ */
 
-interface AgentEntry {
-    id: string;
-    status: string;
-    focus: string;
-    lastHeartbeat: string;
-}
+import { AgentBoardSqlite } from './agentBoardSqlite.js';
+import { databaseManager } from './database.js';
+import * as crypto from 'crypto';
 
-interface LockEntry {
-    resource: string;
-    agentId: string;
-    since: string;
-}
-
+/**
+ * AgentBoard - Facade for agent coordination
+ * 
+ * Maintains backward-compatible API while using SQLite storage.
+ * The basePath parameter is kept for compatibility but ignored (DB is global).
+ */
 export class AgentBoard {
-    private basePath: string;
+    private sqlite: AgentBoardSqlite;
     private projectId: string;
-    private lockManager: LockManager;
 
     constructor(basePath: string, projectId: string) {
-        this.basePath = basePath;
+        // basePath is ignored - SQLite DB is at ~/.memorybank/agentboard.db
         this.projectId = projectId;
-        this.lockManager = new LockManager(basePath);
+        this.sqlite = new AgentBoardSqlite(projectId);
     }
 
+    // ========================================================================
+    // Board Content (Markdown export for compatibility)
+    // ========================================================================
+
+    /**
+     * Get board content as Markdown (for display/debugging)
+     */
     async getBoardContent(): Promise<string> {
-        await this.ensureBoardExists();
-        return await fs.readFile(this.getBoardPath(), 'utf-8');
+        return this.sqlite.exportToMarkdown();
     }
 
-    // --- Task Management Methods ---
+    // ========================================================================
+    // Agent Management
+    // ========================================================================
 
-    async createTask(title: string, fromAgentId: string, assignedTo: string, description: string): Promise<string> {
-        const taskId = `TASK-${Date.now().toString().slice(-6)}`;
-        await this.updateBoard((content) => {
-            const tasks = this.parseTable(content, 'Pending Tasks');
-            
-            const now = new Date().toISOString();
-            // Columns: ID, Title, Assigned To, From, Status, Created At
-            tasks.push([taskId, title, assignedTo, fromAgentId, 'PENDING', now]);
-            
-            return this.updateTable(content, 'Pending Tasks', ['ID', 'Title', 'Assigned To', 'From', 'Status', 'Created At'], tasks);
-        });
-        
-        await this.logMessage(fromAgentId, `Created task ${taskId}: ${title}`);
-        return taskId;
-    }
-
-    async createExternalTask(title: string, fromProject: string, context: string): Promise<string> {
-        const taskId = `EXT-${Date.now().toString().slice(-6)}`;
-        await this.updateBoard((content) => {
-            const requests = this.parseTable(content, 'External Requests');
-            
-            const now = new Date().toISOString();
-            // Sanitize context to fit in a table cell (no newlines, escape pipes)
-            const safeContext = context.replace(/[\r\n]+/g, '<br/>').replace(/\|/g, '\\|');
-
-            // Columns: ID, Title, From Project, Context, Status, Received At
-            requests.push([taskId, title, fromProject, safeContext, 'PENDING', now]);
-            
-            return this.updateTable(content, 'External Requests', ['ID', 'Title', 'From Project', 'Context', 'Status', 'Received At'], requests);
-        });
-        
-        await this.logMessage('SYSTEM', `Received external prompt from project ${fromProject}: ${title}`);
-        return taskId;
-    }
-
-    async completeTask(taskId: string, agentId: string): Promise<void> {
-        await this.updateBoard((content) => {
-            let tasks = this.parseTable(content, 'Pending Tasks');
-            const initialCount = tasks.length;
-            tasks = tasks.filter(t => t[0] !== taskId);
-            
-            if (tasks.length < initialCount) {
-                 return this.updateTable(content, 'Pending Tasks', ['ID', 'Title', 'Assigned To', 'From', 'Status', 'Created At'], tasks);
-            }
-
-            // Check external requests if not found in pending
-            let requests = this.parseTable(content, 'External Requests');
-            requests = requests.filter(t => t[0] !== taskId);
-            return this.updateTable(content, 'External Requests', ['ID', 'Title', 'From Project', 'Context', 'Status', 'Received At'], requests);
-        });
-        await this.logMessage(agentId, `Completed task ${taskId}`);
-    }
-
-    async logMessage(agentId: string, message: string): Promise<void> {
-        await this.updateBoard((content) => {
-            const lines = content.split('\n');
-            let msgSectionIdx = -1;
-            
-            for (let i = 0; i < lines.length; i++) {
-                if (lines[i].trim().startsWith('## Agent Messages')) {
-                    msgSectionIdx = i;
-                    break;
-                }
-            }
-
-            const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
-            const msgLine = `- [${timestamp}] **${agentId}**: ${message}`;
-
-            if (msgSectionIdx !== -1) {
-                // Determine insertion point (after header)
-                lines.splice(msgSectionIdx + 1, 0, msgLine);
-                
-                // Truncate logs if too long (keep last 20)
-                let nextHeaderIdx = -1;
-                 for (let j = msgSectionIdx + 2; j < lines.length; j++) {
-                    if (lines[j].startsWith('## ')) {
-                        nextHeaderIdx = j;
-                        break;
-                    }
-                }
-                const endOfMessages = nextHeaderIdx === -1 ? lines.length : nextHeaderIdx;
-                if (endOfMessages - (msgSectionIdx + 1) > 20) {
-                     lines.splice(endOfMessages - 1, 1);
-                }
-            }
-            return lines.join('\n');
-        });
-    }
-
-    private getBoardPath(): string {
-        return path.join(this.basePath, '.memorybank', 'projects', this.projectId, 'docs', 'agentBoard.md');
-    }
-
-    private async ensureBoardExists(): Promise<void> {
-        const boardPath = this.getBoardPath();
-        try {
-            await fs.access(boardPath);
-        } catch {
-            const initialContent = `# Multi-Agent Board
-
-## Active Agents
-| Agent ID | Status | Current Focus | Session ID | Last Heartbeat |
-|---|---|---|---|---|
-
-## Pending Tasks
-| ID | Title | Assigned To | From | Status | Created At |
-|---|---|---|---|---|---|
-
-## External Requests
-| ID | Title | From Project | Context | Status | Received At |
-|---|---|---|---|---|---|
-
-## File Locks
-| File Pattern | Claimed By | Since |
-|---|---|---|
-
-## Agent Messages
-- [System]: Board initialized
-`;
-            await fs.mkdir(path.dirname(boardPath), { recursive: true });
-            await fs.writeFile(boardPath, initialContent, 'utf-8');
-        }
-    }
-
+    /**
+     * Register an agent with optional session ID
+     * Note: For new flow, use registerAgentWithHash() which returns the generated ID
+     */
     async registerAgent(agentId: string, sessionId?: string): Promise<void> {
-        await this.updateBoard((content) => {
-            const agents = this.parseTable(content, 'Active Agents');
-            const existing = agents.findIndex(a => a[0]?.trim() === agentId);
-            
-            const now = new Date().toISOString();
-            const session = sessionId || (existing >= 0 ? (agents[existing][3] || '') : ''); // Use col 3 as SessionID based on previous read
+        // Legacy method - agent ID already includes hash
+        // Just update/insert into SQLite
+        const db = databaseManager.getConnection();
+        const now = new Date().toISOString();
+        const effectiveSessionId = sessionId || crypto.randomUUID();
 
-            if (existing >= 0) {
-                 // Check if it's already 5 cols or 4
-                 if (agents[existing].length < 5) {
-                    agents[existing] = [agentId, 'ACTIVE', '-', session, now];
-                 } else {
-                     // preserve existing fields if needed, but update timestamp
-                    agents[existing] = [agentId, 'ACTIVE', '-', session, now];
-                 }
-            } else {
-                agents.push([agentId, 'ACTIVE', '-', session, now]);
-            }
-            
-            return this.updateTable(content, 'Active Agents', ['Agent ID', 'Status', 'Current Focus', 'Session ID', 'Last Heartbeat'], agents);
-        });
+        // Deactivate other agents for this project
+        db.prepare(`
+            UPDATE agents 
+            SET status = 'INACTIVE', last_heartbeat = ?
+            WHERE project_id = ? AND status = 'ACTIVE' AND id != ?
+        `).run(now, this.projectId, agentId);
+
+        // Upsert this agent
+        db.prepare(`
+            INSERT INTO agents (id, project_id, session_id, status, focus, last_heartbeat)
+            VALUES (?, ?, ?, 'ACTIVE', '-', ?)
+            ON CONFLICT(id, project_id) DO UPDATE SET
+                session_id = excluded.session_id,
+                status = 'ACTIVE',
+                last_heartbeat = excluded.last_heartbeat
+        `).run(agentId, this.projectId, effectiveSessionId, now);
+
+        this.sqlite.logMessage(agentId, 'Agent registered');
     }
 
+    /**
+     * Register agent and generate hash suffix (new flow)
+     * Client provides base ID (e.g., "Dev-VSCode-Gemini"), MCP generates full ID with hash
+     */
+    registerAgentWithHash(baseAgentId: string, sessionId?: string): { agentId: string; sessionId: string } {
+        return this.sqlite.registerAgent(baseAgentId, sessionId);
+    }
 
+    /**
+     * Update agent status and current focus
+     */
     async updateStatus(agentId: string, status: string, focus: string): Promise<void> {
-        await this.updateBoard((content) => {
-            let agents = this.parseTable(content, 'Active Agents');
-            
-            // Migration: Ensure 5 columns
-            agents = agents.map(row => {
-                if (row.length === 4) {
-                    return [row[0], row[1], row[2], '', row[3]];
-                }
-                return row;
-            });
-
-            const idx = agents.findIndex(a => a[0]?.trim() === agentId);
-            const now = new Date().toISOString();
-            
-            if (idx >= 0) {
-                // Keep existing session ID
-                const currentSession = agents[idx][3] || '';
-                agents[idx] = [agentId, status, focus, currentSession, now];
-            } else {
-                agents.push([agentId, status, focus, '', now]);
-            }
-            
-            return this.updateTable(content, 'Active Agents', ['Agent ID', 'Status', 'Current Focus', 'Session ID', 'Last Heartbeat'], agents);
-        });
+        this.sqlite.updateStatus(agentId, status, focus);
     }
 
+    /**
+     * Resolve a base agent ID to the actual active agent ID
+     */
+    async resolveActiveAgentId(baseId: string): Promise<string> {
+        return this.sqlite.resolveActiveAgentId(baseId);
+    }
+
+    /**
+     * Get session ID for an agent
+     */
     async getSessionId(agentId: string): Promise<string | undefined> {
-        const content = await this.getBoardContent();
-        const agents = this.parseTable(content, 'Active Agents');
-        const agent = agents.find(a => a[0]?.trim() === agentId);
-        
-        if (agent) {
-             // Handle 5 cols
-             if (agent.length >= 5) return agent[3].trim();
-             // Handle 4 cols (legacy) - no session ID
-             return undefined;
-        }
-        return undefined;
+        return this.sqlite.getSessionId(agentId) || undefined;
     }
 
+    /**
+     * Get the currently active agent for this project
+     */
+    getActiveAgent() {
+        return this.sqlite.getActiveAgent();
+    }
+
+    /**
+     * Get all agents (for session history)
+     */
+    getAllAgents() {
+        return this.sqlite.getAllAgents();
+    }
+
+    // ========================================================================
+    // Task Management
+    // ========================================================================
+
+    /**
+     * Create a task (project-centric)
+     * Note: assignedTo parameter is deprecated - tasks go to the project, not agent
+     */
+    async createTask(title: string, fromAgentId: string, assignedTo: string, description: string): Promise<string> {
+        // assignedTo is ignored in new model - tasks are project-centric
+        return this.sqlite.createTask(title, description, fromAgentId);
+    }
+
+    /**
+     * Create an external task from another project
+     */
+    async createExternalTask(title: string, fromProject: string, context: string): Promise<string> {
+        return this.sqlite.createExternalTask(title, fromProject, context);
+    }
+
+    /**
+     * Complete a task
+     */
+    async completeTask(taskId: string, agentId: string): Promise<void> {
+        this.sqlite.completeTask(taskId, agentId);
+    }
+
+    /**
+     * Get pending tasks for this project
+     */
+    getPendingTasks() {
+        return this.sqlite.getPendingTasks();
+    }
+
+    /**
+     * Claim a task
+     */
+    claimTask(taskId: string, agentId: string): boolean {
+        return this.sqlite.claimTask(taskId, agentId);
+    }
+
+    // ========================================================================
+    // Resource Locks
+    // ========================================================================
+
+    /**
+     * Claim a resource lock
+     */
     async claimResource(agentId: string, resource: string): Promise<boolean> {
-        let success = false;
-        await this.updateBoard((content) => {
-            const locks = this.parseTable(content, 'File Locks');
-            
-            // Check if already locked by someone else
-            const existing = locks.find(l => l[0]?.trim() === resource);
-            if (existing && existing[1]?.trim() !== agentId) {
-                success = false;
-                return content; // No change
-            }
-
-            // Add or update lock
-            const now = new Date().toISOString();
-            if (existing) {
-                existing[2] = now; // Renew timestamp
-            } else {
-                locks.push([resource, agentId, now]);
-            }
-            
-            success = true;
-            return this.updateTable(content, 'File Locks', ['File Pattern', 'Claimed By', 'Since'], locks);
-        });
-        return success;
+        return this.sqlite.claimResource(agentId, resource);
     }
 
+    /**
+     * Release a resource lock
+     */
     async releaseResource(agentId: string, resource: string): Promise<void> {
-        await this.updateBoard((content) => {
-            let locks = this.parseTable(content, 'File Locks');
-            // Filter out locks for this resource by this agent
-            locks = locks.filter(l => !(l[0]?.trim() === resource && l[1]?.trim() === agentId));
-            return this.updateTable(content, 'File Locks', ['File Pattern', 'Claimed By', 'Since'], locks);
-        });
+        this.sqlite.releaseResource(agentId, resource);
     }
 
-    // [Duplicate getBoardContent removed]
-
-    // --- Helpers ---
-
-    private async updateBoard(mutator: (content: string) => string): Promise<void> {
-        await this.ensureBoardExists();
-        const locked = await this.lockManager.acquire('agentBoard');
-        if (!locked) {
-            throw new Error('Could not acquire lock for Agent Board');
-        }
-
-        try {
-            const current = await fs.readFile(this.getBoardPath(), 'utf-8');
-            const newContent = mutator(current);
-            await fs.writeFile(this.getBoardPath(), newContent, 'utf-8');
-        } finally {
-            await this.lockManager.release('agentBoard');
-        }
+    /**
+     * Get all locks for this project
+     */
+    getLocks() {
+        return this.sqlite.getLocks();
     }
 
-    private parseTable(content: string, headerName: string): string[][] {
-        const lines = content.split('\n');
-        const result: string[][] = [];
-        let inTable = false;
-        let colCount = 0;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (line.startsWith(`## ${headerName}`)) {
-                inTable = true;
-                continue;
-            }
-            if (inTable) {
-                if (line.startsWith('## ')) break; // New section
-                if (!line.includes('|')) continue;
-                if (line.includes('---')) continue; // Separator
-                
-                // Parse row
-                const cols = line.split('|').map(c => c.trim()).filter(c => c !== '');
-                if (cols.length > 0) {
-                     // Check if it's the header row
-                    if (result.length === 0) {
-                        const firstCol = cols[0].toLowerCase();
-                        if (firstCol.includes('agent id') || firstCol.includes('file pattern') || firstCol === 'id') {
-                            // skip header 
-                        } else {
-                            result.push(cols);
-                        }
-                    } else {
-                         result.push(cols);
-                    }
-                }
-            }
-        }
-        return result;
+    /**
+     * Cleanup orphaned locks
+     */
+    cleanupOrphanedLocks(): number {
+        return this.sqlite.cleanupOrphanedLocks();
     }
 
-    private updateTable(content: string, headerName: string, headers: string[], rows: string[][]): string {
-        const lines = content.split('\n');
-        let startIdx = -1;
-        let endIdx = -1;
+    // ========================================================================
+    // Messages
+    // ========================================================================
 
-        // Validar rows (limpiar arrays vacíos o mal formados)
-        const cleanRows = rows.filter(r => r.length > 0);
+    /**
+     * Log a message to the agent board
+     */
+    async logMessage(agentId: string, message: string): Promise<void> {
+        this.sqlite.logMessage(agentId, message);
+    }
 
-        for (let i = 0; i < lines.length; i++) {
-            if (lines[i].trim().startsWith(`## ${headerName}`)) {
-                startIdx = i;
-                // Find end of section (next ## or end of file)
-                for (let j = i + 1; j < lines.length; j++) {
-                    if (lines[j].trim().startsWith('## ')) {
-                        endIdx = j;
-                        break;
-                    }
-                }
-                if (endIdx === -1) endIdx = lines.length;
-                break;
-            }
-        }
+    /**
+     * Get recent messages
+     */
+    getMessages(limit: number = 20) {
+        return this.sqlite.getMessages(limit);
+    }
 
-        const newTable = [
-            `## ${headerName}`,
-            `| ${headers.join(' | ')} |`,
-            `| ${headers.map(() => '---').join(' | ')} |`,
-            ...cleanRows.map(row => `| ${row.join(' | ')} |`)
-        ].join('\n');
+    // ========================================================================
+    // Session Events
+    // ========================================================================
 
-        if (startIdx === -1) {
-            // Append if not found
-            return content + '\n\n' + newTable;
-        } else {
-            // Replace section
-            const before = lines.slice(0, startIdx);
-            const after = lines.slice(endIdx);
-            return [...before, newTable, '', ...after].join('\n');
-        }
+    /**
+     * Log a session event
+     */
+    logSessionEvent(sessionId: string, eventType: string, eventData: any, agentId?: string): void {
+        this.sqlite.logSessionEvent(sessionId, eventType, eventData, agentId);
+    }
+
+    /**
+     * Get session history
+     */
+    getSessionHistory(sessionId: string) {
+        return this.sqlite.getSessionHistory(sessionId);
+    }
+
+    /**
+     * Get all sessions for this project
+     */
+    getProjectSessions() {
+        return this.sqlite.getProjectSessions();
     }
 }
+
+// Re-export SQLite implementation for direct access if needed
+export { AgentBoardSqlite } from './agentBoardSqlite.js';
+export { cleanupStaleAgents, cleanupAllOrphanedLocks } from './agentBoardSqlite.js';
