@@ -61,6 +61,27 @@ This project uses Memory Bank MCP as a **RAG system** (Retrieval-Augmented Gener
 - **Discover**: `memorybank_discover_projects` to find other agents.
 - **Delegate**: `memorybank_delegate_task` to hand off work.
 
+#### Rule 4: DOCUMENT EVERYTHING CONTINUOUSLY
+
+**After EVERY significant action, update the Memory Bank:**
+
+1. **Track progress** after completing ANY task:
+   ```json
+   { "projectId": "{{PROJECT_ID}}", "progress": { "completed": ["Task done"], "inProgress": ["Next task"] } }
+   ```
+
+2. **Record decisions** when making architectural/technical choices:
+   ```json
+   { "projectId": "{{PROJECT_ID}}", "decision": { "title": "...", "description": "...", "rationale": "..." } }
+   ```
+
+3. **Update context** to leave notes for next session:
+   ```json
+   { "projectId": "{{PROJECT_ID}}", "recentChanges": ["..."], "nextSteps": ["..."] }
+   ```
+
+**The goal: Next session (or another agent) can pick up exactly where you left off.**
+
 ---
 
 ### Available Tools
@@ -124,14 +145,23 @@ CONFIRM TO USER
 ### Session Start
 
 1. **Establish Identity** (CRITICAL):
-   - Pick a unique ID: `{Role}-{IDE}-{Model}-{ShortHash}`
-   - Register (System assigns Session ID automatically):
+   - Pick a unique ID: `{Role}-{IDE}-{Model}` (system adds hash automatically)
+   - Register (System assigns Session ID and hash suffix):
    ```json
-   { "projectId": "{{PROJECT_ID}}", "action": "register", "agentId": "Dev-VSCode-GPT4-8A2F" }
+   { "projectId": "{{PROJECT_ID}}", "action": "register", "agentId": "Dev-VSCode-GPT4" }
    ```
-   - **NOTE**: The system holds your `agentId` in memory after registration for locking/logging.
+   - The system returns your full agentId with hash (e.g., `Dev-VSCode-GPT4-a1b2c3d4`)
 
-2. **Initialize if first time**:
+2. **Check Pending Tasks** (CRITICAL):
+   - After registering, check the board for pending tasks:
+   ```json
+   { "projectId": "{{PROJECT_ID}}", "action": "get_board" }
+   ```
+   - Look for tasks with `status: "PENDING"` assigned to your project
+   - **If pending tasks exist: prioritize them before user requests**
+   - Tasks may come from other agents via `memorybank_delegate_task`
+
+3. **Initialize if first time**:
 ```json
 // memorybank_initialize - Creates basic templates (no AI, instant)
 {
@@ -142,7 +172,7 @@ CONFIRM TO USER
 ```
 > After indexing, run `memorybank_generate_project_docs` to replace with AI docs.
 
-3. **Get active context**:
+4. **Get active context**:
 ```json
 // memorybank_get_project_docs
 {
@@ -151,7 +181,7 @@ CONFIRM TO USER
 }
 ```
 
-4. **Update session**:
+5. **Update session**:
 ```json
 // memorybank_update_context
 {
@@ -274,11 +304,21 @@ Note: No need for `forceReindex` - changes are detected via hash automatically.
 
 ## Summary
 
-| Action | Tool | Required |
-|--------|------|----------|
-| Before implementing | `memorybank_search` | ✅ ALWAYS |
-| After modifying | `memorybank_index_code` | ✅ ALWAYS |
-| Session start | `memorybank_initialize` | Once |
-| Track progress | `memorybank_track_progress` | Recommended |
+### The 4 Rules
+
+| Rule | Action | Tool | Required |
+|------|--------|------|----------|
+| 0 | Coordinate agents | `memorybank_manage_agents` | ✅ Session start |
+| 1 | Search before implementing | `memorybank_search` | ✅ ALWAYS |
+| 2 | Reindex after modifying | `memorybank_index_code` | ✅ ALWAYS |
+| 3 | Respect project boundaries | `memorybank_delegate_task` | When needed |
+| 4 | Document everything | `memorybank_track_progress` | ✅ ALWAYS |
+
+### Session Checklist
+
+- [ ] Register agent (`action: register`)
+- [ ] Check pending tasks (`action: get_board`)
+- [ ] Get active context (`memorybank_get_project_docs`)
+- [ ] Update session (`memorybank_update_context`)
 
 **The Memory Bank is your source of truth. Consult constantly, update always.**
