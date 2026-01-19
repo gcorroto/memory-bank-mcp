@@ -637,12 +637,13 @@ server.tool(
   manageAgentsToolDefinition.description,
   {
     projectId: z.string().describe("Identificador único del proyecto (OBLIGATORIO)"),
-    action: z.enum(["register", "update_status", "claim_resource", "release_resource", "get_board"]).describe("Acción a realizar"),
+    action: z.enum(["register", "update_status", "claim_resource", "release_resource", "get_board", "complete_task", "claim_task"]).describe("Acción a realizar"),
     agentId: z.string().optional().describe("Identificador del agente (ej: 'dev-agent-1'). Requerido para escrituras."),
     sessionId: z.string().optional().describe("UUID de sesión del agente para tracking de contexto."),
     status: z.string().optional().describe("Estado del agente (para update_status)."),
     focus: z.string().optional().describe("Tarea o fichero en el que se enfoca (para update_status)."),
     resource: z.string().optional().describe("Identificador del recurso a bloquear (ej: 'src/auth/')."),
+    taskId: z.string().optional().describe("ID de la tarea para complete_task o claim_task (ej: 'EXT-123456', 'TASK-789012')."),
     workspacePath: z.string().optional().describe("RUTA ABSOLUTA al directorio raíz del workspace. IMPORTANTE para registro correcto del proyecto."),
   },
   async (args) => {
@@ -650,6 +651,10 @@ server.tool(
     
     if ((args.action === 'register' || args.action === 'update_status') && !args.agentId) {
        throw new Error(`agentId is required for action ${args.action}`);
+    }
+    
+    if ((args.action === 'complete_task' || args.action === 'claim_task') && !args.taskId) {
+       throw new Error(`taskId is required for action ${args.action}`);
     }
 
     // Use workspacePath from args if provided, otherwise fall back to workspaceRoot
@@ -663,6 +668,7 @@ server.tool(
         status: args.status,
         focus: args.focus,
         resource: args.resource,
+        taskId: args.taskId,
         workspacePath: effectiveWorkspace
     });
     

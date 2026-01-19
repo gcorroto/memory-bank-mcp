@@ -97,9 +97,20 @@ This project uses Memory Bank MCP as a **RAG system** (Retrieval-Augmented Gener
 #### Multi-Project
 | Tool | Description |
 |------|-------------|
-| `memorybank_manage_agents` | Coordination & locking |
+| `memorybank_manage_agents` | Coordination, locking & task management |
 | `memorybank_discover_projects` | Find other projects |
-| `memorybank_delegate_task` | Handoff work |
+| `memorybank_delegate_task` | Handoff work to other projects |
+
+#### Agent Board Actions (`memorybank_manage_agents`)
+| Action | Description |
+|--------|-------------|
+| `register` | Register agent at session start |
+| `get_board` | View agents, tasks, locks |
+| `claim_task` | Claim a pending task |
+| `complete_task` | Mark task as completed |
+| `claim_resource` | Lock a file/resource |
+| `release_resource` | Unlock a file/resource |
+| `update_status` | Update agent status |
 
 #### Project Knowledge Layer
 | Tool | Description |
@@ -171,7 +182,7 @@ CONFIRM TO USER
 // memorybank_initialize - Creates basic templates (no AI, instant)
 {
   "projectId": "memory_bank_mcp",
-  "projectPath": "C:\\workspaces\\grecoLab",
+  "projectPath": "C:\\workspaces\\grecoLab\\memory-bank-mcp",
   "projectName": "Project Name"
 }
 ```
@@ -260,6 +271,65 @@ Note: No need for `forceReindex` - changes are detected via hash automatically.
 
 ---
 
+### Task Management
+
+Tasks can come from:
+- **Internal**: Created via `track_progress` when adding items to `inProgress`
+- **External**: Delegated from other projects via `delegate_task`
+
+#### Checking Pending Tasks
+
+At session start (and periodically), check for pending tasks:
+```json
+{
+  "projectId": "memory_bank_mcp",
+  "action": "get_board"
+}
+```
+
+Look for the **Pending Tasks** section:
+- `TASK-XXXXXX`: Internal tasks
+- `EXT-XXXXXX`: External tasks from other projects
+
+#### Claiming a Task
+
+Before working on a task, claim it to prevent conflicts:
+```json
+{
+  "projectId": "memory_bank_mcp",
+  "action": "claim_task",
+  "taskId": "EXT-123456"
+}
+```
+
+This changes the task status from `PENDING` to `IN_PROGRESS`.
+
+#### Completing a Task
+
+After finishing a task, mark it as completed:
+```json
+{
+  "projectId": "memory_bank_mcp",
+  "action": "complete_task",
+  "taskId": "EXT-123456"
+}
+```
+
+This changes the task status to `COMPLETED` and logs the completion.
+
+#### Task Workflow
+
+```
+PENDING → claim_task → IN_PROGRESS → complete_task → COMPLETED
+```
+
+**Important:**
+- Always `claim_task` before starting work
+- Always `complete_task` when done (even for external tasks)
+- External tasks (`EXT-*`) were delegated by other projects - completing them notifies the requester
+
+---
+
 ### Recording Decisions
 
 ```json
@@ -323,7 +393,9 @@ Note: No need for `forceReindex` - changes are detected via hash automatically.
 
 - [ ] Register agent (`action: register`)
 - [ ] Check pending tasks (`action: get_board`)
+- [ ] Claim pending tasks (`action: claim_task`) if any
 - [ ] Get active context (`memorybank_get_project_docs`)
 - [ ] Update session (`memorybank_update_context`)
+- [ ] Complete tasks when done (`action: complete_task`)
 
 **The Memory Bank is your source of truth. Consult constantly, update always.**
