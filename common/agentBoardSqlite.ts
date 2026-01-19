@@ -259,6 +259,7 @@ export class AgentBoardSqlite {
         `).run(taskId, this.projectId, title, description || null, fromAgent || null, now);
 
         this.logMessage(fromAgent || 'SYSTEM', `Created task ${taskId}: ${title}`);
+        databaseManager.flushForExternalReaders();
 
         return taskId;
     }
@@ -278,6 +279,7 @@ export class AgentBoardSqlite {
         `).run(taskId, this.projectId, title, context || null, fromProjectId, now);
 
         this.logMessage('SYSTEM', `External task ${taskId} from ${fromProjectId}: ${title}`);
+        databaseManager.flushForExternalReaders();
 
         return taskId;
     }
@@ -312,6 +314,7 @@ export class AgentBoardSqlite {
 
         if (result.changes > 0) {
             this.logMessage(agentId, `Claimed task ${taskId}`);
+            databaseManager.flushForExternalReaders();
             return true;
         }
         return false;
@@ -332,6 +335,7 @@ export class AgentBoardSqlite {
 
         if (result.changes > 0) {
             this.logMessage(agentId, `Completed task ${taskId}`);
+            databaseManager.flushForExternalReaders();
             return true;
         }
         return false;
