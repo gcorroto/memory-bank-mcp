@@ -678,6 +678,48 @@ server.tool(
   }
 );
 
+// Tool: Claim Task
+server.tool(
+  "memorybank_claim_task",
+  "Reclama una tarea pendiente para trabajar en ella. Cambia el estado de PENDING a IN_PROGRESS.",
+  {
+    projectId: z.string().describe("Identificador único del proyecto (OBLIGATORIO)"),
+    taskId: z.string().describe("ID de la tarea a reclamar (ej: 'EXT-123456', 'TASK-789012')"),
+  },
+  async (args) => {
+    const result = await manageAgentsTool({
+        projectId: args.projectId,
+        action: 'claim_task',
+        taskId: args.taskId,
+    });
+    
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// Tool: Complete Task
+server.tool(
+  "memorybank_complete_task",
+  "Marca una tarea como completada. Funciona tanto para tareas internas (TASK-*) como externas (EXT-*).",
+  {
+    projectId: z.string().describe("Identificador único del proyecto (OBLIGATORIO)"),
+    taskId: z.string().describe("ID de la tarea a completar (ej: 'EXT-123456', 'TASK-789012')"),
+  },
+  async (args) => {
+    const result = await manageAgentsTool({
+        projectId: args.projectId,
+        action: 'complete_task',
+        taskId: args.taskId,
+    });
+    
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
 
 // ==========================================
 // MCP Resources (Direct document access)
@@ -1088,6 +1130,8 @@ async function startStdioServer() {
     console.error("    - memorybank_track_progress: Actualizar progreso del proyecto");
     console.error("  Multi-Agent Coordination:");
     console.error("    - memorybank_manage_agents: Coordinación y bloqueos de recursos");
+    console.error("    - memorybank_claim_task: Reclamar una tarea pendiente");
+    console.error("    - memorybank_complete_task: Marcar una tarea como completada");
     console.error("    - memorybank_discover_projects: Descubrir otros proyectos en el ecosistema");
     console.error("    - memorybank_delegate_task: Delegar tareas a otros proyectos");
     console.error("");
