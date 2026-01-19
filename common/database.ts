@@ -210,11 +210,74 @@ class DatabaseManager {
     }
 
     /**
-     * Run a transaction with automatic rollback on error
+     * Run a transaction with automatic rollback on error.
+     * Automatically flushes WAL after successful transaction for external readers.
      */
     transaction<T>(fn: () => T): T {
         const db = this.getConnection();
-        return db.transaction(fn)();
+        const result = db.transaction(fn)();
+        // Auto-flush after any transaction so sql.js can read the changes
+        this.flushForExternalReaders();
+        return result;
+    }
+
+    /**
+     * Execute a write operation (INSERT, UPDATE, DELETE) and auto-flush WAL.
+     * Use this for single statements that modify data.
+     * For multiple related writes, use transaction() instead.
+     * 
+     * @param sql - SQL statement to execute
+     * @param params - Parameters to bind to the statement
+     * @returns RunResult with changes count and lastInsertRowid
+     */
+    runWrite(sql: string, ...params: any[]): { changes: number; lastInsertRowid: number | bigint } {
+        const db = this.getConnection();
+        const result = db.prepare(sql).run(...params);
+        // Auto-flush so sql.js can read the changes immediately
+        this.flushForExternalReaders();
+        return result;
+    }
+
+    /**
+     * Force WAL checkpoint to flush pending writes to the main database file.
+     * This is necessary for external readers (like sql.js in VS Code extension)
+     * that cannot read WAL files directly.
+     * 
+     * @param mode - Checkpoint mode:
+     *   - 'PASSIVE': Checkpoint as much as possible without blocking (default)
+     *   - 'FULL': Wait for all readers, then checkpoint everything
+     *   - 'RESTART': Like FULL, but also restart the WAL file
+     *   - 'TRUNCATE': Like RESTART, but also truncate WAL file to zero bytes
+     * @returns Object with busy (pages that couldn't be checkpointed) and log (total WAL pages)
+     */
+    checkpoint(mode: 'PASSIVE' | 'FULL' | 'RESTART' | 'TRUNCATE' = 'PASSIVE'): { busy: number; log: number } {
+        if (!this.db) {
+            return { busy: 0, log: 0 };
+        }
+
+        try {
+            const result = this.db.pragma(`wal_checkpoint(${mode})`) as Array<{ busy: number; log: number }>;
+            const checkpointResult = result[0] || { busy: 0, log: 0 };
+            
+            // Only log if there were actual pages to flush (reduce noise)
+            if (checkpointResult.log > 0) {
+                console.error(`[Database] WAL checkpoint: ${checkpointResult.log - checkpointResult.busy}/${checkpointResult.log} pages flushed`);
+            }
+            
+            return checkpointResult;
+        } catch (error) {
+            console.error(`[Database] Checkpoint error: ${error}`);
+            return { busy: 0, log: 0 };
+        }
+    }
+
+    /**
+     * Perform a full checkpoint and ensure all data is written to main DB file.
+     * Called automatically after write operations.
+     * Can also be called manually if needed.
+     */
+    flushForExternalReaders(): void {
+        this.checkpoint('TRUNCATE');
     }
 }
 

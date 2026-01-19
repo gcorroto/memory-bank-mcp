@@ -194,6 +194,9 @@ export class AgentBoardSqlite {
             SET status = ?, focus = ?, last_heartbeat = ?
             WHERE id = ? AND project_id = ?
         `).run(status, focus, now, resolvedId, this.projectId);
+        
+        // Flush WAL so external readers can see changes
+        databaseManager.flushForExternalReaders();
     }
 
     /**
@@ -208,6 +211,9 @@ export class AgentBoardSqlite {
             SET last_heartbeat = ?
             WHERE id = ? AND project_id = ?
         `).run(now, agentId, this.projectId);
+        
+        // Flush WAL so external readers can see changes
+        databaseManager.flushForExternalReaders();
     }
 
     /**
@@ -396,6 +402,7 @@ export class AgentBoardSqlite {
         `).run(resource, this.projectId, agentId);
 
         this.logMessage(agentId, `Released lock on ${resource}`);
+        // Note: logMessage already flushes
     }
 
     /**
@@ -428,6 +435,9 @@ export class AgentBoardSqlite {
             DELETE FROM locks
             WHERE agent_id = ? AND project_id = ?
         `).run(agentId, this.projectId);
+        
+        // Flush WAL so external readers can see changes
+        databaseManager.flushForExternalReaders();
 
         return result.changes;
     }
@@ -444,6 +454,9 @@ export class AgentBoardSqlite {
                 SELECT id FROM agents WHERE project_id = ? AND status = 'ACTIVE'
             )
         `).run(this.projectId, this.projectId);
+        
+        // Flush WAL so external readers can see changes
+        databaseManager.flushForExternalReaders();
 
         return result.changes;
     }
@@ -454,6 +467,7 @@ export class AgentBoardSqlite {
 
     /**
      * Log a session event
+     * Auto-flushes WAL for external readers since this tracks all agent actions
      */
     logSessionEvent(sessionId: string, eventType: string, eventData: any, agentId?: string): void {
         const db = databaseManager.getConnection();
@@ -470,6 +484,9 @@ export class AgentBoardSqlite {
             JSON.stringify(eventData),
             now
         );
+        
+        // Flush WAL so external readers (sql.js) can see changes
+        databaseManager.flushForExternalReaders();
     }
 
     /**
@@ -530,6 +547,7 @@ export class AgentBoardSqlite {
 
     /**
      * Log a message
+     * Auto-flushes WAL for external readers since this is called at end of most operations
      */
     logMessage(agentId: string, message: string): void {
         const db = databaseManager.getConnection();
@@ -539,6 +557,9 @@ export class AgentBoardSqlite {
             INSERT INTO messages (project_id, agent_id, message, timestamp)
             VALUES (?, ?, ?, ?)
         `).run(this.projectId, agentId, message, now);
+        
+        // Flush WAL so external readers (sql.js) can see changes
+        databaseManager.flushForExternalReaders();
     }
 
     /**
@@ -620,6 +641,9 @@ export function cleanupStaleAgents(staleMinutes: number = 30): number {
         WHERE status = 'ACTIVE' 
         AND datetime(last_heartbeat) < datetime('now', '-' || ? || ' minutes')
     `).run(staleMinutes);
+    
+    // Flush WAL so external readers can see changes
+    databaseManager.flushForExternalReaders();
 
     return result.changes;
 }
@@ -636,6 +660,9 @@ export function cleanupAllOrphanedLocks(): number {
             SELECT id FROM agents WHERE status = 'ACTIVE'
         )
     `).run();
+    
+    // Flush WAL so external readers can see changes
+    databaseManager.flushForExternalReaders();
 
     return result.changes;
 }
