@@ -67,6 +67,16 @@ You MUST use Memory Bank tools for ALL operations:
 | `memorybank_track_progress` | Update progress tracking |
 | `memorybank_manage_agents` | Agent registration and coordination |
 
+#### Agent Board Actions (`memorybank_manage_agents`)
+| Action | Description |
+|--------|-------------|
+| `register` | Register agent at session start |
+| `get_board` | View agents, tasks, locks |
+| `claim_task` | Claim a pending task |
+| `complete_task` | Mark task as completed |
+| `claim_resource` | Lock a file/resource |
+| `release_resource` | Unlock a file/resource |
+
 #### MCP Resources (Direct Access)
 | Resource URI | Content |
 |--------------|---------|
@@ -136,7 +146,12 @@ At the beginning of each session:
 ```
    - If tasks with `status: "PENDING"` exist, prioritize them
 
-3. **Initialize if first time** (only once per project):
+3. **Claim & Complete Tasks**:
+   - Before working on a task: `action: "claim_task"` with `taskId`
+   - After finishing a task: `action: "complete_task"` with `taskId`
+   - Task states: `PENDING` → `IN_PROGRESS` → `COMPLETED`
+
+4. **Initialize if first time** (only once per project):
 ```json
 // memorybank_initialize - Creates basic templates (no AI, instant)
 {

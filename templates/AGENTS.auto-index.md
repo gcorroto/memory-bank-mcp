@@ -106,9 +106,20 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 #### Multi-Project & Coordination
 | Tool | Description |
 |------|-------------|
-| `memorybank_manage_agents` | Coordination & locking |
+| `memorybank_manage_agents` | Coordination, locking & task management |
 | `memorybank_discover_projects` | Find other projects in the ecosystem |
 | `memorybank_delegate_task` | Create tasks for other project agents |
+
+#### Agent Board Actions (`memorybank_manage_agents`)
+| Action | Description | Required Params |
+|--------|-------------|----------------|
+| `register` | Register agent at session start | `agentId`, `workspacePath` |
+| `get_board` | View agents, tasks, locks | - |
+| `claim_task` | Claim a pending task | `taskId` |
+| `complete_task` | Mark task as completed | `taskId` |
+| `claim_resource` | Lock a file/resource | `agentId`, `resource` |
+| `release_resource` | Unlock a file/resource | `agentId`, `resource` |
+| `update_status` | Update agent status | `agentId`, `status`, `focus` |
 
 #### Project Knowledge Layer (AI Documentation)
 | Tool | Description |
@@ -281,6 +292,75 @@ Note: No need for `forceReindex: true` - the system detects changes via hash aut
 
 ---
 
+### Task Management
+
+Tasks are **project-centric** - they belong to a project, not to a specific agent. The active agent for a project handles its pending tasks.
+
+#### Task Sources
+
+| Prefix | Source | Description |
+|--------|--------|-------------|
+| `TASK-XXXXXX` | Internal | Created via `track_progress` when adding to `inProgress` |
+| `EXT-XXXXXX` | External | Delegated from other projects via `delegate_task` |
+
+#### Checking Pending Tasks
+
+At session start (and periodically), check for pending tasks:
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "action": "get_board"
+}
+```
+
+The response includes a **Pending Tasks** table with all tasks assigned to your project.
+
+#### Claiming a Task
+
+Before working on a task, **claim it** to signal you're handling it:
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "action": "claim_task",
+  "taskId": "EXT-123456"
+}
+```
+
+This changes the task status from `PENDING` → `IN_PROGRESS` and records who claimed it.
+
+#### Completing a Task
+
+After finishing a task, **mark it as completed**:
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "action": "complete_task",
+  "taskId": "EXT-123456"
+}
+```
+
+This changes the task status to `COMPLETED` and logs the completion with timestamp.
+
+#### Task State Machine
+
+```
+┌──────────┐   claim_task   ┌─────────────┐   complete_task   ┌───────────┐
+│ PENDING  │ ─────────────► │ IN_PROGRESS │ ────────────────► │ COMPLETED │
+└──────────┘                └─────────────┘                   └───────────┘
+```
+
+#### Best Practices
+
+1. **Always check for pending tasks** at session start
+2. **Claim tasks before starting** to prevent duplicate work
+3. **Complete tasks when done** - don't leave them hanging
+4. **External tasks (`EXT-*`)** were delegated by other projects:
+   - They expect you to handle them
+   - Completing them signals the work is done
+   - Check the task description for context from the requester
+
+---
+
 ### Recording Decisions
 
 When making significant technical decisions:
@@ -348,14 +428,15 @@ After completing tasks:
 
 1. [ ] Register: `action: "register"` → get agentId with hash
 2. [ ] Check tasks: `action: "get_board"` → look for PENDING tasks
-3. [ ] Get context: `memorybank_get_project_docs` → load activeContext
-4. [ ] Update session: `memorybank_update_context` → mark session active
-5. [ ] Handle pending tasks FIRST before new work
+3. [ ] Claim tasks: `action: "claim_task"` → claim any PENDING tasks you'll work on
+4. [ ] Get context: `memorybank_get_project_docs` → load activeContext
+5. [ ] Update session: `memorybank_update_context` → mark session active
+6. [ ] Handle pending tasks FIRST before new work
 
 ### After Every Action Checklist
 
 - [ ] Modified file? → `memorybank_index_code`
-- [ ] Completed task? → `memorybank_track_progress`
+- [ ] Completed task? → `action: "complete_task"` + `memorybank_track_progress`
 - [ ] Made decision? → `memorybank_record_decision`
 - [ ] Ending session? → `memorybank_update_context` with nextSteps
 

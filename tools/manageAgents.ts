@@ -6,17 +6,18 @@ import os from 'os';
 
 export interface ManageAgentsParams {
   projectId: string;
-  action: 'register' | 'update_status' | 'claim_resource' | 'release_resource' | 'get_board';
+  action: 'register' | 'update_status' | 'claim_resource' | 'release_resource' | 'get_board' | 'complete_task' | 'claim_task';
   agentId?: string;
   sessionId?: string;
   status?: string;
   focus?: string;
   resource?: string;
+  taskId?: string;
   workspacePath?: string; // The actual project path (should be passed by the agent)
 }
 
 export async function manageAgentsTool(params: ManageAgentsParams): Promise<any> {
-    const { projectId, action, agentId, sessionId, status, focus, resource, workspacePath } = params;
+    const { projectId, action, agentId, sessionId, status, focus, resource, taskId, workspacePath } = params;
 
     // For register action, workspacePath is REQUIRED to correctly register the project
     if (action === 'register' && !workspacePath) {
@@ -97,6 +98,40 @@ export async function manageAgentsTool(params: ManageAgentsParams): Promise<any>
                 const content = await board.getBoardContent();
                 return { success: true, content };
 
+            case 'complete_task':
+                if (!taskId) throw new Error('taskId is required for complete_task');
+                const completeAgentId = agentId 
+                    ? await board.resolveActiveAgentId(agentId)
+                    : sessionState.getCurrentAgentId() || 'SYSTEM';
+                await board.completeTask(taskId, completeAgentId);
+                return { 
+                    success: true, 
+                    message: `Task ${taskId} marked as COMPLETED by ${completeAgentId}`,
+                    taskId,
+                    completedBy: completeAgentId
+                };
+
+            case 'claim_task':
+                if (!taskId) throw new Error('taskId is required for claim_task');
+                const claimAgentId = agentId 
+                    ? await board.resolveActiveAgentId(agentId)
+                    : sessionState.getCurrentAgentId();
+                if (!claimAgentId) throw new Error('agentId is required for claim_task (or register first)');
+                const taskClaimed = board.claimTask(taskId, claimAgentId);
+                if (taskClaimed) {
+                    return { 
+                        success: true, 
+                        message: `Task ${taskId} claimed by ${claimAgentId}`,
+                        taskId,
+                        claimedBy: claimAgentId
+                    };
+                } else {
+                    return { 
+                        success: false, 
+                        message: `Task ${taskId} could not be claimed (already claimed or doesn't exist)` 
+                    };
+                }
+
             default:
                 throw new Error(`Unknown action: ${action}`);
         }
@@ -121,7 +156,7 @@ export const manageAgentsToolDefinition = {
       action: {
         type: "string",
         description: "Acción a realizar",
-        enum: ["register", "update_status", "claim_resource", "release_resource", "get_board"],
+        enum: ["register", "update_status", "claim_resource", "release_resource", "get_board", "complete_task", "claim_task"],
       },
       agentId: {
         type: "string",
@@ -143,9 +178,13 @@ export const manageAgentsToolDefinition = {
         type: "string",
         description: "Identificador del recurso a bloquear (ej: 'src/auth/').",
       },
+      taskId: {
+        type: "string",
+        description: "ID de la tarea para complete_task o claim_task (ej: 'EXT-123456', 'TASK-789012').",
+      },
       workspacePath: {
         type: "string",
-        description: "RUTA ABSOLUTA al directorio raíz del workspace. IMPORTANTE: Debe coincidir con la ruta real del proyecto, no usar rutas relativas.",
+        description: "RUTA ABSOLUTA al directorio raíz del workspace. IMPORTANTE para registro correcto del proyecto.",
       },
     },
     required: ["projectId", "action"],
