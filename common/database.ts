@@ -140,8 +140,9 @@ class DatabaseManager {
             timeout: 5000, // Wait up to 5s for locks
         });
 
-        // Enable WAL mode for concurrent reads during writes
-        this.db.pragma('journal_mode = WAL');
+        // Use DELETE journal mode instead of WAL for compatibility with sql.js readers
+        // sql.js cannot read databases with WAL mode enabled (even with empty WAL files)
+        this.db.pragma('journal_mode = DELETE');
         
         // Foreign keys enforcement
         this.db.pragma('foreign_keys = ON');
