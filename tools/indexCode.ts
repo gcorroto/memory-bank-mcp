@@ -8,6 +8,7 @@ import { IndexManager } from "../common/indexManager.js";
 import { AgentBoard } from "../common/agentBoard.js";
 import { sessionLogger } from "../common/sessionLogger.js";
 import { sessionState } from "../common/sessionState.js";
+import { RegistryManager } from "../common/registryManager.js";
 
 export interface IndexCodeParams {
   projectId: string;       // Project identifier (REQUIRED)
@@ -70,6 +71,25 @@ export async function indexCode(
     console.error(`Workspace root: ${workspaceRoot}`);
     console.error(`Recursive: ${params.recursive !== false}`);
     console.error(`Force reindex: ${params.forceReindex || false}`);
+
+    // Register project and update embedding
+    try {
+        const registryManager = new RegistryManager();
+        const embeddingService = indexManager.getEmbeddingService();
+        
+        // Try to get description/keywords from indexManager or project files could be an enhancement
+        // For now, we ensure registration with what we have
+        await registryManager.registerProject(
+            params.projectId, 
+            workspaceRoot, 
+            undefined, // Preserve existing description
+            [], // Preserve/empty keywords
+            embeddingService
+        );
+        console.error(`Project ${params.projectId} registered/updated in global registry and vector store`);
+    } catch (regError) {
+        console.error(`Failed to register project: ${regError}`);
+    }
     
     // Run indexing - pass workspaceRoot for consistent path normalization
     const result = await indexManager.indexFiles({

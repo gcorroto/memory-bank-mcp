@@ -1,4 +1,5 @@
 import { RegistryManager } from '../common/registryManager.js';
+import { EmbeddingService } from '../common/embeddingService.js';
 
 export interface DiscoverProjectsParams {
     query?: string;
@@ -6,7 +7,17 @@ export interface DiscoverProjectsParams {
 
 export async function discoverProjectsTool(params: DiscoverProjectsParams) {
     const registryManager = new RegistryManager();
-    const projects = await registryManager.discoverProjects(params.query);
+    let embeddingService: EmbeddingService | undefined;
+    
+    if (process.env.OPENAI_API_KEY) {
+        try {
+            embeddingService = new EmbeddingService(process.env.OPENAI_API_KEY);
+        } catch (e) {
+           console.error("Failed to init embedding service for discovery:", e);
+        }
+    }
+
+    const projects = await registryManager.discoverProjects(params.query, embeddingService);
     return {
         success: true,
         projectCount: projects.length,

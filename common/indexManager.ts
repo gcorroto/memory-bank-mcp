@@ -89,6 +89,13 @@ export class IndexManager {
     this.projectKnowledgeService = service;
     console.error("Project Knowledge Service attached to Index Manager");
   }
+
+  /**
+   * Gets the Embedding Service instance
+   */
+  getEmbeddingService(): EmbeddingService {
+    return this.embeddingService;
+  }
   
   /**
    * Enables or disables auto-update of project docs after indexing
