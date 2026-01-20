@@ -129,4 +129,31 @@ export class RegistryManager {
         const registry = await this.ensureRegistry();
         return registry.projects.find(p => p.projectId === projectId);
     }
+
+    /**
+     * Syncs all projects from the JSON registry to the vector store.
+     * Useful for migrating existing projects to the new semantic discovery system.
+     */
+    async syncRegistry(embeddingService: EmbeddingService): Promise<{ processed: number, failures: number }> {
+        const registry = await this.ensureRegistry();
+        let processed = 0;
+        let failures = 0;
+
+        console.error(`Syncing ${registry.projects.length} projects to vector store...`);
+
+        for (const project of registry.projects) {
+            try {
+                await this.updateProjectEmbedding(project, embeddingService);
+                processed++;
+                if (processed % 10 === 0) {
+                    console.error(`Synced ${processed}/${registry.projects.length} projects`);
+                }
+            } catch (error) {
+                console.error(`Failed to sync project ${project.projectId}: ${error}`);
+                failures++;
+            }
+        }
+
+        return { processed, failures };
+    }
 }

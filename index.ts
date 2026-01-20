@@ -89,6 +89,7 @@ import { trackProgress, trackProgressToolDefinition } from "./tools/trackProgres
 import { manageAgentsTool, manageAgentsToolDefinition } from "./tools/manageAgents.js";
 import { discoverProjectsTool, discoverProjectsToolDefinition } from "./tools/discoverProjects.js";
 import { delegateTaskTool, delegateTaskToolDefinition } from "./tools/delegateTask.js";
+import { syncProjectsTool, syncProjectsToolDefinition } from "./tools/syncProjects.js";
 import { RegistryManager } from "./common/registryManager.js";
 
 
@@ -1066,6 +1067,19 @@ server.tool(
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
   }
+);
+
+// Tool: Sync Projects
+server.tool(
+    syncProjectsToolDefinition.name,
+    syncProjectsToolDefinition.description,
+    {},
+    async () => {
+        const result = await syncProjectsTool();
+        return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+        };
+    }
 );
 
 // Tool: Delegate Task
