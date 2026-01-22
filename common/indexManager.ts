@@ -298,6 +298,52 @@ export class IndexManager {
     
     return sanitized || "default";
   }
+
+  /**
+   * Processes a batch of files concurrently
+   */
+  private async processBatch(
+    batch: FileMetadata[],
+    startIndex: number,
+    totalFiles: number,
+    forceReindex: boolean,
+    projectId: string
+  ): Promise<{
+    processedCount: number;
+    chunksCount: number;
+    changedFiles: string[];
+    errors: string[];
+  }> {
+    const batchErrors: string[] = [];
+    const batchChangedFiles: string[] = [];
+    let batchChunks = 0;
+    let batchProcessed = 0;
+
+    const results = await Promise.all(batch.map(async (file, index) => {
+      console.error(`\n[${startIndex + index + 1}/${totalFiles}] Processing ${file.path}`);
+      return {
+        file,
+        result: await this.indexFile(file, forceReindex, projectId)
+      };
+    }));
+
+    for (const { file, result } of results) {
+      if (result.error) {
+        batchErrors.push(result.error);
+      } else {
+        batchProcessed++;
+        batchChunks += result.chunksCreated;
+        batchChangedFiles.push(file.path);
+      }
+    }
+
+    return {
+      processedCount: batchProcessed,
+      chunksCount: batchChunks,
+      changedFiles: batchChangedFiles,
+      errors: batchErrors
+    };
+  }
   
   /**
    * Indexes multiple files or a directory
@@ -380,19 +426,23 @@ export class IndexManager {
     let totalChunks = 0;
     let processedFiles = 0;
     
-    for (let i = 0; i < filesToIndex.length; i++) {
-      const file = filesToIndex[i];
-      console.error(`\n[${i + 1}/${filesToIndex.length}] Processing ${file.path}`);
+    // Process files in batches of 5
+    const batchSize = 5;
+    for (let i = 0; i < filesToIndex.length; i += batchSize) {
+      const batch = filesToIndex.slice(i, i + batchSize);
       
-      const result = await this.indexFile(file, options.forceReindex || false, projectId);
+      const batchResult = await this.processBatch(
+        batch, 
+        i, 
+        filesToIndex.length, 
+        options.forceReindex || false, 
+        projectId
+      );
       
-      if (result.error) {
-        errors.push(result.error);
-      } else {
-        processedFiles++;
-        totalChunks += result.chunksCreated;
-        changedFiles.push(file.path);
-      }
+      processedFiles += batchResult.processedCount;
+      totalChunks += batchResult.chunksCount;
+      changedFiles.push(...batchResult.changedFiles);
+      errors.push(...batchResult.errors);
     }
     
     const indexDuration = Date.now() - startTime;
