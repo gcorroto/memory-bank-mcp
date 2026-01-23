@@ -59,6 +59,13 @@ With Memory Bank, AIs:
 - **🆔 Identity Management**: Tracks who is doing what (GitHub Copilot, Cursor, etc.)
 - **🔒 Atomic Locks**: File-system based locking safe across different processes/IDEs
 
+### Task Orchestration (Smart Routing) 🧭 NEW
+- **🎯 Intelligent Routing**: Analyzes tasks BEFORE implementation to determine ownership
+- **📋 Enriched Project Registry**: Projects have responsibilities, ownership, and exports metadata
+- **🤖 AI Reasoning**: Uses reasoning models to distribute work across projects
+- **🔀 Auto-Delegation**: Automatically identifies what should be delegated to other projects
+- **📦 Import Suggestions**: Recommends what to import from other projects instead of reimplementing
+
 ## 📋 Requirements
 
 - **Node.js** >= 18.0.0
@@ -294,19 +301,37 @@ Reads generated documentation.
 1. Index code
    memorybank_index_code({ projectId: "my-project" })
 
-2. Generate documentation
+2. Generate documentation (also updates global registry)
    memorybank_generate_project_docs({ projectId: "my-project" })
 
 3. Query documentation at the start of each session
    memorybank_get_project_docs({ projectId: "my-project", document: "activeContext" })
 
-4. Search specific code
+4. Route task BEFORE implementing (mandatory in auto-index mode)
+   memorybank_route_task({ projectId: "my-project", taskDescription: "..." })
+
+5. Search specific code
    memorybank_search({ projectId: "my-project", query: "..." })
 ```
 
 ### Auto-Update Documentation
 
 If you configure `MEMORYBANK_AUTO_UPDATE_DOCS=true`, documents will be automatically regenerated after each indexing. This is useful for keeping documentation always up to date but consumes more API tokens.
+
+### Upgrading Existing Projects 🆕
+
+If you have projects already initialized with a previous version, simply regenerate the docs to enable Task Orchestration:
+
+```json
+// For each existing project:
+memorybank_generate_project_docs({ "projectId": "your-project", "force": true })
+```
+
+This will:
+1. Regenerate all 6 markdown documents
+2. **NEW**: Extract responsibilities, ownership, and exports
+3. **NEW**: Update `global_registry.json` with enriched metadata
+4. Enable `memorybank_route_task` to work with this project
 
 ---
 
@@ -381,6 +406,71 @@ memorybank_delegate_task({
   "context": "Frontend needs this for feature X"
 })
 ```
+
+### Task Orchestration (Smart Routing) 🧭 NEW
+
+The **Task Orchestrator** analyzes tasks BEFORE implementation to prevent agents from creating code that belongs to other projects.
+
+#### Why is this needed?
+
+Without orchestration, agents often:
+- ❌ Create DTOs in the API project when `lib-dtos` exists
+- ❌ Duplicate utilities that are already in `shared-utils`
+- ❌ Implement features that belong to other microservices
+- ❌ Violate architectural boundaries unknowingly
+
+With the orchestrator:
+- ✅ Know exactly what belongs to this project
+- ✅ Automatically delegate work to the right project
+- ✅ Get import suggestions instead of reimplementing
+- ✅ Respect ecosystem boundaries
+
+#### How It Works
+
+1. **Enriched Registry**: When you run `memorybank_generate_project_docs`, it automatically extracts:
+   - `responsibilities`: What this project is responsible for
+   - `owns`: Files/folders that belong to this project
+   - `exports`: What this project provides to others
+   - `projectType`: api, library, frontend, backend, etc.
+
+2. **Route Before Implementing**: Call `memorybank_route_task` BEFORE any code changes:
+```json
+memorybank_route_task({
+  "projectId": "my-api",
+  "taskDescription": "Create DTOs for user management and expose REST endpoints"
+})
+```
+
+3. **Orchestrator Response**:
+```json
+{
+  "action": "partial_delegate",
+  "myResponsibilities": [
+    "Create REST endpoints in src/controllers/",
+    "Implement business logic in src/services/"
+  ],
+  "delegations": [
+    {
+      "targetProjectId": "lib-dtos",
+      "taskTitle": "Create UserDTO and UserResponseDTO",
+      "reason": "DTOs belong to lib-dtos per project responsibilities"
+    }
+  ],
+  "suggestedImports": [
+    "import { UserDTO } from 'lib-dtos'"
+  ],
+  "architectureNotes": "Use shared DTOs to maintain consistency across services"
+}
+```
+
+#### Possible Actions
+
+| Action | Meaning |
+|--------|--------|
+| `implement_here` | Everything belongs to this project, proceed |
+| `delegate_all` | Nothing belongs here, delegate everything |
+| `partial_delegate` | Some parts belong here, delegate the rest |
+| `needs_clarification` | Task is ambiguous, ask user for details |
 
 ---
 
@@ -524,9 +614,36 @@ Analyzes project indexing coverage.
 }
 ```
 
+### `memorybank_route_task` 🆕
+
+Analyzes a task and determines what belongs to this project vs what should be delegated. **MUST be called BEFORE any implementation.**
+
+**Parameters:**
+- `projectId` **(REQUIRED)**: Project requesting the routing
+- `taskDescription` **(REQUIRED)**: Detailed description of what needs to be implemented
+
+**Example:**
+```json
+{
+  "projectId": "my-api",
+  "taskDescription": "Create user registration endpoint with validation and DTOs"
+}
+```
+
+**Response:**
+```json
+{
+  "action": "partial_delegate",
+  "myResponsibilities": ["Create POST /users endpoint", "Add validation middleware"],
+  "delegations": [{ "targetProjectId": "lib-dtos", "taskTitle": "Create UserDTO" }],
+  "suggestedImports": ["import { UserDTO } from 'lib-dtos'"],
+  "architectureNotes": "Follow REST conventions, use shared DTOs"
+}
+```
+
 ### `memorybank_generate_project_docs`
 
-Generates structured project documentation using AI with reasoning.
+Generates structured project documentation using AI with reasoning. **Also automatically updates the global registry with enriched project metadata** (responsibilities, owns, exports, projectType).
 
 **Parameters:**
 - `projectId` **(REQUIRED)**: Project identifier
@@ -721,11 +838,13 @@ Memory Bank includes instruction templates in two formats to configure agent beh
 **For active development with automatic synchronization.**
 
 - ✅ Agent consults Memory Bank automatically
+- ✅ **Routes tasks before implementing** (Rule 0.5)
 - ✅ Reindexes EVERY file after modifying it
 - ✅ Keeps Memory Bank always up to date
 - ✅ Can read/write files directly
+- ✅ **Auto-delegates to other projects** when appropriate
 
-**Ideal for**: Active development, rapid iteration, teams.
+**Ideal for**: Active development, rapid iteration, teams, **multi-project ecosystems**.
 
 ### 3. Sandboxed Mode
 
@@ -889,7 +1008,35 @@ Claude: [executes memorybank_generate_project_docs({ projectId: "my-app" })]
         - techContext.md: Tech stack
         ...
         
+        Also updated the global registry with project responsibilities.
         You can query them anytime with memorybank_get_project_docs
+```
+
+### 5. Task Orchestration (Multi-Project) 🆕
+
+```
+User: I need to add a UserDTO for the new registration endpoint
+Claude: [executes memorybank_route_task({ 
+          projectId: "my-api", 
+          taskDescription: "Create UserDTO for registration endpoint" 
+        })]
+        
+        The orchestrator analyzed your ecosystem and determined:
+        
+        ❌ DTOs should NOT be created in my-api
+        ✅ DTOs belong to lib-dtos project
+        
+        I'll delegate the DTO creation to lib-dtos and import it:
+        
+        [executes memorybank_delegate_task({
+          projectId: "my-api",
+          targetProjectId: "lib-dtos", 
+          title: "Create UserDTO",
+          description: "DTO for user registration with email, password fields"
+        })]
+        
+        Task delegated! Once lib-dtos creates the DTO, you can:
+        import { UserDTO } from 'lib-dtos'
 ```
 
 ---
