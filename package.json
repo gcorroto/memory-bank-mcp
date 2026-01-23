@@ -1,6 +1,6 @@
 {
   "name": "@grec0/memory-bank-mcp",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "description": "MCP server for semantic code indexing with Memory Bank - AI-powered codebase understanding",
   "license": "MIT",
   "author": "@grec0",
@@ -40,14 +40,14 @@
     "@lancedb/lancedb": "^0.9.0",
     "@modelcontextprotocol/sdk": "1.25.2",
     "@types/node": "^22",
+    "better-sqlite3": "^11.7.0",
     "gpt-tokenizer": "3.4.0",
     "ignore": "^5.3.0",
     "openai": "^4.0.0",
     "tree-sitter-wasms": "0.1.13",
-    "web-tree-sitter": "0.26.3",
+    "web-tree-sitter": "0.20.8",
     "zod": "^3.22.4",
-    "zod-to-json-schema": "^3.23.5",
-    "better-sqlite3": "^11.7.0"
+    "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",
