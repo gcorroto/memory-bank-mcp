@@ -8,10 +8,12 @@ import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
 import { encode } from "gpt-tokenizer";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
 
 // Tree-sitter types
 interface TreeSitterNode {
@@ -183,6 +185,7 @@ const SEMANTIC_NODE_TYPES: Record<string, string[]> = {
 // Cache for loaded languages
 // Using 'any' types because web-tree-sitter's TypeScript types don't work well with dynamic imports
 let ParserClass: any = null;
+let LanguageClass: any = null;
 const loadedLanguages: Map<string, any> = new Map();
 let treeSitterInitialized = false;
 
@@ -209,17 +212,28 @@ function generateChunkId(filePath: string, content: string, startLine: number): 
  * Initializes Tree-sitter WASM module
  */
 async function initTreeSitter(): Promise<boolean> {
-  if (treeSitterInitialized && ParserClass) {
+  if (treeSitterInitialized && ParserClass && LanguageClass) {
     return true;
   }
 
   try {
     // Dynamic import of web-tree-sitter
-    // web-tree-sitter exports Parser as a named export, not default
     const TreeSitterModule = await import("web-tree-sitter") as any;
     
-    // Get Parser from named export
-    ParserClass = TreeSitterModule.Parser;
+    // Handle different export formats across web-tree-sitter versions:
+    // - v0.20.x: exports Parser as default, Language is Parser.Language
+    // - v0.26.x: exports Parser and Language as separate named exports
+    if (TreeSitterModule.Parser) {
+      // v0.26.x style: named exports
+      ParserClass = TreeSitterModule.Parser;
+      LanguageClass = TreeSitterModule.Language;
+    } else if (TreeSitterModule.default) {
+      // v0.20.x style: default export is Parser, Language is a static property
+      ParserClass = TreeSitterModule.default;
+      LanguageClass = null; // Will use ParserClass.Language after init
+    } else {
+      throw new Error('Could not find Parser in web-tree-sitter module');
+    }
     
     if (!ParserClass) {
       throw new Error('Parser class not found in web-tree-sitter module');
@@ -230,6 +244,15 @@ async function initTreeSitter(): Promise<boolean> {
       await ParserClass.init();
     }
     
+    // For v0.20.x, Language becomes available after init
+    if (!LanguageClass && ParserClass.Language) {
+      LanguageClass = ParserClass.Language;
+    }
+    
+    if (!LanguageClass) {
+      throw new Error('Language class not found in web-tree-sitter module');
+    }
+    
     treeSitterInitialized = true;
     console.error("[AST Chunker] Tree-sitter initialized successfully");
     return true;
@@ -237,6 +260,7 @@ async function initTreeSitter(): Promise<boolean> {
     console.error(`[AST Chunker] Failed to initialize Tree-sitter: ${error}`);
     treeSitterInitialized = false;
     ParserClass = null;
+    LanguageClass = null;
     return false;
   }
 }
@@ -250,12 +274,32 @@ function getWasmPath(language: string): string | null {
     return null;
   }
 
-  // Try to find in node_modules
-  const possiblePaths = [
-    path.join(__dirname, "..", "node_modules", "tree-sitter-wasms", "out", wasmFile),
-    path.join(process.cwd(), "node_modules", "tree-sitter-wasms", "out", wasmFile),
+  // Build comprehensive list of possible paths
+  // The compiled JS runs from dist/common/, so we need to account for various scenarios:
+  // 1. Local development: dist/common/../node_modules = dist/node_modules (wrong)
+  // 2. Local development: __dirname/../../node_modules = node_modules (correct)
+  // 3. NPM installed package: need to resolve from the package location
+  // 4. Global install or monorepo: process.cwd() based paths
+  
+  const possiblePaths: string[] = [
+    // From dist/common/ go up two levels to project root then into node_modules
     path.join(__dirname, "..", "..", "node_modules", "tree-sitter-wasms", "out", wasmFile),
+    // From current working directory
+    path.join(process.cwd(), "node_modules", "tree-sitter-wasms", "out", wasmFile),
+    // From dist/ go up one level (in case __dirname is dist/)
+    path.join(__dirname, "..", "node_modules", "tree-sitter-wasms", "out", wasmFile),
+    // Three levels up (for nested structures like dist/common/subdir)
+    path.join(__dirname, "..", "..", "..", "node_modules", "tree-sitter-wasms", "out", wasmFile),
   ];
+
+  // Try to use require.resolve to find the package (works in most Node.js scenarios)
+  try {
+    const treeSitterWasmsPath = require.resolve("tree-sitter-wasms/package.json");
+    const packageDir = path.dirname(treeSitterWasmsPath);
+    possiblePaths.unshift(path.join(packageDir, "out", wasmFile));
+  } catch {
+    // Package not found via require.resolve, continue with file-based search
+  }
 
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
@@ -264,6 +308,7 @@ function getWasmPath(language: string): string | null {
   }
 
   console.error(`[AST Chunker] WASM file not found for ${language}: ${wasmFile}`);
+  console.error(`[AST Chunker] Searched paths: ${possiblePaths.map(p => `\n  - ${p}`).join('')}`);
   return null;
 }
 
@@ -271,8 +316,8 @@ function getWasmPath(language: string): string | null {
  * Loads a language parser
  */
 async function loadLanguage(language: string): Promise<any | null> {
-  if (!ParserClass) {
-    console.error("[AST Chunker] Parser not initialized");
+  if (!ParserClass || !LanguageClass) {
+    console.error("[AST Chunker] Parser or Language not initialized");
     return null;
   }
 
@@ -287,14 +332,19 @@ async function loadLanguage(language: string): Promise<any | null> {
     return null;
   }
 
+  console.error(`[AST Chunker] Attempting to load WASM from: ${wasmPath}`);
+
   try {
     // Use the Language.load static method
-    const lang = await ParserClass.Language.load(wasmPath);
+    const lang = await LanguageClass.load(wasmPath);
     loadedLanguages.set(langKey, lang);
     console.error(`[AST Chunker] Loaded language: ${language}`);
     return lang;
   } catch (error) {
-    console.error(`[AST Chunker] Failed to load language ${language}: ${error}`);
+    console.error(`[AST Chunker] Failed to load language ${language}: ${error instanceof Error ? error.message : error}`);
+    if (error instanceof Error && error.stack) {
+      console.error(`[AST Chunker] Stack: ${error.stack}`);
+    }
     return null;
   }
 }
@@ -690,5 +740,6 @@ export function disposeASTChunker(): void {
   loadedLanguages.clear();
   treeSitterInitialized = false;
   ParserClass = null;
+  LanguageClass = null;
   console.error("[AST Chunker] Disposed");
 }
