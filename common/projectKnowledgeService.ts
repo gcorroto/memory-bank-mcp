@@ -1336,18 +1336,23 @@ ${techContext ? `TECHNICAL CONTEXT:\n${techContext.content}` : ''}
 Extract the following information in JSON format:
 {
   "description": "A concise 1-2 sentence description of what this project does",
-  "responsibilities": ["COMPLETE list of ALL things this project is responsible for - do NOT limit, include everything"],
-  "owns": ["ALL file patterns or directories this project owns, e.g., '*DTO.ts', 'services/', 'controllers/'"],
+  "responsibilities": ["List ALL functional responsibilities - what this project DOES as capabilities/features"],
+  "owns": ["File patterns or directories this project owns, e.g., 'src/services/', '*DTO.ts', 'controllers/'"],
   "projectType": "One of: api, library, frontend, backend, cli, service, monorepo, fullstack",
   "exports": "Package name if it's a library (e.g., '@company/lib-dtos'), or null if not applicable",
   "keywords": ["Relevant keywords describing this project"]
 }
 
-IMPORTANT:
-- responsibilities MUST be COMPLETE - list ALL responsibilities, not just 3-5. Missing responsibilities will cause the orchestrator to fail at delegating tasks correctly.
-- For "owns", include ALL file patterns and directories that ONLY this project should create/modify
-- If it's a library, identify what it exports/provides to other projects
-- Be thorough - incomplete information leads to incorrect task routing
+CRITICAL GUIDELINES:
+- responsibilities: List ALL functional capabilities - what this project DOES, NOT how it does it
+  - ✅ GOOD: "Index codebases into vector embeddings", "Provide semantic search over code"
+  - ❌ BAD: "Uses tree-sitter for parsing", "Runs Jest tests", "Documents caveats in README"
+  - Focus on FEATURES and CAPABILITIES, not implementation details, configuration, testing, or documentation
+- owns: List directories/patterns this project creates or modifies (not every file it contains)
+  - ✅ GOOD: "src/tools/", ".memorybank/", "src/services/"
+  - ❌ BAD: "README.md", "package.json", "tsconfig.json" (these are generic project files)
+- Be thorough on functional responsibilities - missing ones cause incorrect task routing
+- Ignore implementation details, CI/CD, testing setup, documentation practices
 
 Respond ONLY with the JSON object, no markdown or explanation.`;
 
