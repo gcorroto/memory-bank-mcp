@@ -1336,17 +1336,18 @@ ${techContext ? `TECHNICAL CONTEXT:\n${techContext.content}` : ''}
 Extract the following information in JSON format:
 {
   "description": "A concise 1-2 sentence description of what this project does",
-  "responsibilities": ["List of 3-5 specific things this project is responsible for"],
-  "owns": ["File patterns or types this project owns, e.g., '*DTO.ts', 'services/', 'controllers/'"],
+  "responsibilities": ["COMPLETE list of ALL things this project is responsible for - do NOT limit, include everything"],
+  "owns": ["ALL file patterns or directories this project owns, e.g., '*DTO.ts', 'services/', 'controllers/'"],
   "projectType": "One of: api, library, frontend, backend, cli, service, monorepo, fullstack",
   "exports": "Package name if it's a library (e.g., '@company/lib-dtos'), or null if not applicable",
-  "keywords": ["5-8 keywords describing this project"]
+  "keywords": ["Relevant keywords describing this project"]
 }
 
 IMPORTANT:
-- Be specific about responsibilities - they help the orchestrator decide where code belongs
-- For "owns", think about what file patterns ONLY this project should create
+- responsibilities MUST be COMPLETE - list ALL responsibilities, not just 3-5. Missing responsibilities will cause the orchestrator to fail at delegating tasks correctly.
+- For "owns", include ALL file patterns and directories that ONLY this project should create/modify
 - If it's a library, identify what it exports/provides to other projects
+- Be thorough - incomplete information leads to incorrect task routing
 
 Respond ONLY with the JSON object, no markdown or explanation.`;
 
