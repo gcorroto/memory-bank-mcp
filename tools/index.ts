@@ -17,3 +17,6 @@ export * from "./syncProjects.js";
 export * from "./generateProjectDocs.js";
 export * from "./getProjectDocs.js";
 export * from "./manageAgents.js";
+
+// Export Task Orchestration tools
+export * from "./routeTask.js";

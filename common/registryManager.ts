@@ -11,6 +11,11 @@ export interface ProjectCard {
     keywords: string[];
     lastActive: string;
     status: 'ACTIVE' | 'IDLE';
+    // Enhanced fields for orchestrator
+    responsibilities?: string[];   // What this project is responsible for
+    owns?: string[];              // File patterns this project owns (e.g., "*DTO.ts", "services/")
+    exports?: string;             // Package name if it's a library (e.g., "@company/lib-dtos")
+    projectType?: string;         // Type: api, library, frontend, backend, cli, etc.
 }
 
 export interface GlobalRegistry {
@@ -40,11 +45,23 @@ export class RegistryManager {
         await fs.writeFile(this.globalPath, JSON.stringify(registry, null, 2), 'utf-8');
     }
 
-    async registerProject(projectId: string, workspacePath: string, description?: string, keywords: string[] = [], embeddingService?: EmbeddingService): Promise<void> {
+    async registerProject(
+        projectId: string, 
+        workspacePath: string, 
+        description?: string, 
+        keywords: string[] = [], 
+        embeddingService?: EmbeddingService,
+        enhancedInfo?: {
+            responsibilities?: string[];
+            owns?: string[];
+            exports?: string;
+            projectType?: string;
+        }
+    ): Promise<void> {
         const registry = await this.ensureRegistry();
         const idx = registry.projects.findIndex(p => p.projectId === projectId);
         
-        // Preserve existing description/keywords if not provided
+        // Preserve existing data if not provided
         const existing = idx >= 0 ? registry.projects[idx] : null;
 
         const card: ProjectCard = {
@@ -53,7 +70,12 @@ export class RegistryManager {
             description: description || existing?.description || '',
             keywords: keywords.length > 0 ? keywords : (existing?.keywords || []),
             lastActive: new Date().toISOString(),
-            status: 'ACTIVE'
+            status: 'ACTIVE',
+            // Enhanced fields - preserve existing if not provided
+            responsibilities: enhancedInfo?.responsibilities || existing?.responsibilities,
+            owns: enhancedInfo?.owns || existing?.owns,
+            exports: enhancedInfo?.exports || existing?.exports,
+            projectType: enhancedInfo?.projectType || existing?.projectType,
         };
 
         if (idx >= 0) {
@@ -75,13 +97,33 @@ export class RegistryManager {
     }
 
     private async updateProjectEmbedding(card: ProjectCard, embeddingService: EmbeddingService): Promise<void> {
-        const text = `Project: ${card.projectId}\nDescription: ${card.description || ''}\nKeywords: ${card.keywords.join(', ')}`;
+        // Build rich text for embedding including responsibilities
+        const textParts = [
+            `Project: ${card.projectId}`,
+            `Description: ${card.description || ''}`,
+            `Keywords: ${card.keywords.join(', ')}`,
+        ];
+        
+        if (card.responsibilities && card.responsibilities.length > 0) {
+            textParts.push(`Responsibilities: ${card.responsibilities.join('. ')}`);
+        }
+        if (card.owns && card.owns.length > 0) {
+            textParts.push(`Owns: ${card.owns.join(', ')}`);
+        }
+        if (card.projectType) {
+            textParts.push(`Type: ${card.projectType}`);
+        }
+        if (card.exports) {
+            textParts.push(`Exports: ${card.exports}`);
+        }
+        
+        const text = textParts.join('\n');
         const result = await embeddingService.generateEmbedding(card.projectId, text);
         
         await this.projectVectorStore.upsertProject({
             id: card.projectId,
             vector: result.vector,
-            name: card.projectId, // Using ID as name for now if name not available
+            name: card.projectId,
             description: card.description || '',
             tags: card.keywords,
             path: card.path,
@@ -128,6 +170,15 @@ export class RegistryManager {
     async getProject(projectId: string): Promise<ProjectCard | undefined> {
         const registry = await this.ensureRegistry();
         return registry.projects.find(p => p.projectId === projectId);
+    }
+
+    /**
+     * Gets all projects from the registry.
+     * Useful for the orchestrator to analyze responsibilities across all projects.
+     */
+    async getAllProjects(): Promise<ProjectCard[]> {
+        const registry = await this.ensureRegistry();
+        return registry.projects;
     }
 
     /**

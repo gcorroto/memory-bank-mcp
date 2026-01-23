@@ -7,6 +7,8 @@ import { ProjectKnowledgeService, ProjectDocType, GenerationResult } from "../co
 import { VectorStore } from "../common/vectorStore.js";
 import { AgentBoard } from "../common/agentBoard.js";
 import { sessionLogger } from "../common/sessionLogger.js";
+import { RegistryManager } from "../common/registryManager.js";
+import { EmbeddingService } from "../common/embeddingService.js";
 import * as path from "path";
 
 import { sessionState } from "../common/sessionState.js";
@@ -140,6 +142,51 @@ export async function generateProjectDocs(
     console.error(`  - Reasoning tokens: ${result.totalReasoningTokens}`);
     console.error(`  - Output tokens: ${result.totalOutputTokens}`);
     console.error(`  - Estimated cost: $${totalCost.toFixed(4)}`);
+    
+    // === AUTO-UPDATE GLOBAL REGISTRY ===
+    // Generate project summary and update registry with enriched info
+    if (result.documentsGenerated.length > 0 || result.documentsUpdated.length > 0) {
+      try {
+        console.error(`\n=== Updating Global Registry ===`);
+        const summary = await projectKnowledgeService.generateProjectSummary(projectId);
+        
+        if (summary) {
+          const registryManager = new RegistryManager();
+          let embeddingService: EmbeddingService | undefined;
+          
+          if (process.env.OPENAI_API_KEY) {
+            try {
+              embeddingService = new EmbeddingService(process.env.OPENAI_API_KEY);
+            } catch (e) {
+              console.error(`Warning: Could not init embedding service: ${e}`);
+            }
+          }
+          
+          await registryManager.registerProject(
+            projectId,
+            workspaceRoot,
+            summary.description,
+            summary.keywords,
+            embeddingService,
+            {
+              responsibilities: summary.responsibilities,
+              owns: summary.owns,
+              exports: summary.exports,
+              projectType: summary.projectType,
+            }
+          );
+          
+          console.error(`Registry updated for ${projectId}:`);
+          console.error(`  - Description: ${summary.description.slice(0, 80)}...`);
+          console.error(`  - Type: ${summary.projectType}`);
+          console.error(`  - Responsibilities: ${summary.responsibilities.length}`);
+          message += ` Registry updated with project summary.`;
+        }
+      } catch (regError) {
+        console.error(`Warning: Failed to update registry: ${regError}`);
+        // Don't fail the whole operation if registry update fails
+      }
+    }
     
     return {
       success: result.success,

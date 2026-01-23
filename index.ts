@@ -90,6 +90,7 @@ import { manageAgentsTool, manageAgentsToolDefinition } from "./tools/manageAgen
 import { discoverProjectsTool, discoverProjectsToolDefinition } from "./tools/discoverProjects.js";
 import { delegateTaskTool, delegateTaskToolDefinition } from "./tools/delegateTask.js";
 import { syncProjectsTool, syncProjectsToolDefinition } from "./tools/syncProjects.js";
+import { routeTaskTool, routeTaskToolDefinition } from "./tools/routeTask.js";
 import { RegistryManager } from "./common/registryManager.js";
 
 
@@ -1107,6 +1108,25 @@ server.tool(
   }
 );
 
+// Tool: Route Task (Orchestrator)
+server.tool(
+  routeTaskToolDefinition.name,
+  routeTaskToolDefinition.description,
+  {
+      projectId: z.string().describe("ID del proyecto que está solicitando el enrutamiento"),
+      taskDescription: z.string().describe("Descripción detallada de la tarea a implementar")
+  },
+  async (args) => {
+    const result = await routeTaskTool({
+      projectId: args.projectId,
+      taskDescription: args.taskDescription
+    });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
 /**
  * Starts the stdio server
  */
@@ -1148,6 +1168,7 @@ async function startStdioServer() {
     console.error("    - memorybank_complete_task: Marcar una tarea como completada");
     console.error("    - memorybank_discover_projects: Descubrir otros proyectos en el ecosistema");
     console.error("    - memorybank_delegate_task: Delegar tareas a otros proyectos");
+    console.error("    - memorybank_route_task: Orquestador - analiza y distribuye tareas");
     console.error("");
     console.error("Available resources:");
     console.error("    - memory://{projectId}/active: Contexto activo");

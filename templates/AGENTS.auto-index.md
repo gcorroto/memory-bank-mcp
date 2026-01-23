@@ -20,8 +20,54 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 1. **Check Board**: Use `memorybank_manage_agents` with `action: "get_board"` to see active agents/locks.
 2. **Register**: Identity yourself (e.g., `role-ide-model`). Call `action: "register"` with your `agentId`. The system will assign a **Session ID** for tracking context automatically.
 3. **Claim Task**: `action: "claim_resource"` for the file/feature you are working on.
-4. **Work**: Perform your task (Search -> Implement -> Index).
+4. **Work**: Perform your task (Route -> Search -> Implement -> Index).
 5. **Release**: `action: "release_resource"` when done.
+
+#### Rule 0.5: 🚨 ROUTE TASK BEFORE ANY IMPLEMENTATION (MANDATORY)
+
+**BEFORE writing ANY code, you MUST call `memorybank_route_task`.** This is NON-NEGOTIABLE.
+
+```json
+// memorybank_route_task - MANDATORY before ANY code changes
+{
+  "projectId": "{{PROJECT_ID}}",
+  "taskDescription": "Full description of what you're about to implement"
+}
+```
+
+The orchestrator will analyze the task and tell you:
+- **myResponsibilities**: What YOU should implement
+- **delegations**: Tasks to delegate to other projects
+- **suggestedImports**: Dependencies to use after delegations
+
+**Why is this mandatory?**
+- Prevents creating DTOs in an API when a `lib-dtos` exists
+- Prevents duplicating services that belong to another project
+- Ensures proper separation of responsibilities across the workspace
+
+**If the orchestrator says to delegate:**
+1. Use `memorybank_delegate_task` to send tasks to other projects
+2. Wait for them to complete (or note the dependency)
+3. Import from the external package instead of creating locally
+
+**Example flow:**
+```
+User: "Create a user endpoint with DTO"
+    ↓
+You call: memorybank_route_task({ taskDescription: "Create user endpoint with UserDTO" })
+    ↓
+Orchestrator responds:
+{
+  "action": "mixed",
+  "myResponsibilities": ["UserController", "User routes"],
+  "delegations": [
+    { "targetProject": "lib-dtos", "taskTitle": "Create UserDTO", ... }
+  ],
+  "suggestedImports": ["@company/lib-dtos"]
+}
+    ↓
+You: delegate DTO creation, then implement only the controller
+```
 
 #### Rule 1: ALWAYS SEARCH BEFORE IMPLEMENTING
 
@@ -93,10 +139,15 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 
 ### Available Tools
 
+#### 🚨 Task Orchestration (MANDATORY)
+| Tool | Description | When to Use |
+|------|-------------|-------------|
+| `memorybank_route_task` | Analyze task & distribute work | **BEFORE any implementation** |
+
 #### Core Memory Bank (Semantic RAG - USE CONSTANTLY)
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `memorybank_search` | Semantic search in code | **BEFORE any implementation** |
+| `memorybank_search` | Semantic search in code | After routing, before implementing |
 | `memorybank_index_code` | Index/reindex files | **AFTER any modification** |
 | `memorybank_read_file` | Read file contents | When search results need more context |
 | `memorybank_write_file` | Write with auto-reindex | Alternative to manual write+index |
@@ -148,30 +199,37 @@ This project uses Memory Bank MCP with **automatic indexing**. The Memory Bank i
 
 ---
 
-### Workflow: The RAG Loop
+### Workflow: The Orchestrated RAG Loop
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    THE RAG LOOP (ALWAYS)                    │
+│              THE ORCHESTRATED RAG LOOP (ALWAYS)             │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  1. USER REQUEST                                            │
 │         ↓                                                   │
-│  2. SEARCH MEMORY BANK ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐               │
-│     - memorybank_search (related code)      │               │
-│     - memorybank_get_project_docs (if needed) │             │
-│         ↓                                   │               │
-│  3. UNDERSTAND EXISTING CODE                │               │
-│     - Read search results                   │               │
-│     - memorybank_read_file (if need more)   │               │
-│         ↓                                   │               │
-│  4. IMPLEMENT CHANGES                       │               │
-│     - Follow existing patterns found        │               │
-│         ↓                                   │               │
-│  5. REINDEX IMMEDIATELY ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘               │
+│  2. 🚨 ROUTE TASK (MANDATORY)                               │
+│     - memorybank_route_task (analyze responsibilities)      │
+│         ↓                                                   │
+│  3. IF DELEGATIONS NEEDED:                                  │
+│     - memorybank_delegate_task (for each delegation)        │
+│         ↓                                                   │
+│  4. SEARCH MEMORY BANK ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐               │
+│     - memorybank_search (for YOUR responsibilities)  │      │
+│     - memorybank_get_project_docs (if needed)        │      │
+│         ↓                                            │      │
+│  5. UNDERSTAND EXISTING CODE                         │      │
+│     - Read search results                            │      │
+│     - memorybank_read_file (if need more)            │      │
+│         ↓                                            │      │
+│  6. IMPLEMENT YOUR RESPONSIBILITIES ONLY             │      │
+│     - Follow existing patterns found                 │      │
+│     - Use suggestedImports from orchestrator         │      │
+│         ↓                                            │      │
+│  7. REINDEX IMMEDIATELY ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘      │
 │     - memorybank_index_code (MANDATORY)                     │
 │         ↓                                                   │
-│  6. CONFIRM TO USER                                         │
+│  8. CONFIRM TO USER                                         │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -243,21 +301,37 @@ At the beginning of each session:
 
 ### Before ANY Implementation
 
-**STOP. Did you search first?**
+**STOP. Did you route the task first?**
 
 ```json
-// ALWAYS do this BEFORE writing any code
+// 🚨 MANDATORY: Route the task BEFORE any code
 {
   "projectId": "{{PROJECT_ID}}",
-  "query": "existing implementation of [what you're about to implement]"
+  "taskDescription": "Full description of what you're about to implement"
 }
 ```
 
-Ask yourself:
-- ✅ Did I search for similar existing code?
-- ✅ Did I search for related patterns?
-- ✅ Did I search for potential dependencies?
-- ✅ Do I understand how this fits in the existing codebase?
+The orchestrator will tell you:
+- What YOU should implement (myResponsibilities)
+- What to DELEGATE to other projects (delegations)
+- What to IMPORT after delegations (suggestedImports)
+
+**Then search for your responsibilities:**
+
+```json
+// Search for patterns related to YOUR responsibilities only
+{
+  "projectId": "{{PROJECT_ID}}",
+  "query": "existing implementation of [your responsibility]"
+}
+```
+
+**Checklist before coding:**
+- ✅ Called `memorybank_route_task`?
+- ✅ Delegated tasks if orchestrator said so?
+- ✅ Searched for similar existing code?
+- ✅ Searched for related patterns?
+- ✅ Understand how it fits in the existing codebase?
 
 ### After ANY Modification
 
@@ -414,14 +488,15 @@ After completing tasks:
 
 ## Summary
 
-### The 4 Critical Rules
+### The Critical Rules
 
 | Rule | What | Tool | Mandatory |
 |------|------|------|----------|
 | 0 | Coordinate with agents | `memorybank_manage_agents` | ✅ Session start |
+| **0.5** | **🚨 Route task before coding** | **`memorybank_route_task`** | **✅ ALWAYS** |
 | 1 | Search before implementing | `memorybank_search` | ✅ ALWAYS |
 | 2 | Reindex after modifying | `memorybank_index_code` | ✅ ALWAYS |
-| 3 | Respect project boundaries | `memorybank_delegate_task` | When cross-project |
+| 3 | Respect project boundaries | `memorybank_delegate_task` | When orchestrator says |
 | 4 | Document everything | `memorybank_track_progress` | ✅ ALWAYS |
 
 ### Session Start Checklist
@@ -433,6 +508,13 @@ After completing tasks:
 5. [ ] Update session: `memorybank_update_context` → mark session active
 6. [ ] Handle pending tasks FIRST before new work
 
+### Before Every Implementation Checklist
+
+- [ ] 🚨 Called `memorybank_route_task`? (MANDATORY)
+- [ ] Delegated tasks to other projects if needed?
+- [ ] Searched for existing patterns?
+- [ ] Understand what is YOUR responsibility?
+
 ### After Every Action Checklist
 
 - [ ] Modified file? → `memorybank_index_code`
@@ -440,4 +522,4 @@ After completing tasks:
 - [ ] Made decision? → `memorybank_record_decision`
 - [ ] Ending session? → `memorybank_update_context` with nextSteps
 
-**Remember: The Memory Bank is your source of truth. Consult it constantly, keep it updated always.**
+**Remember: The Memory Bank is your source of truth. The Orchestrator decides WHO does WHAT. Consult both constantly.**

@@ -1298,6 +1298,88 @@ ${chunk.content}
     const files = fs.readdirSync(docsPath);
     return files.filter(f => f.endsWith(".md"));
   }
+
+  // ==========================================
+  // Project Summary Generation (for Registry)
+  // ==========================================
+
+  /**
+   * Generates a structured summary of the project for the global registry.
+   * Extracts responsibilities, ownership patterns, and project type from projectBrief.
+   * This is called automatically after generateAllDocuments.
+   */
+  async generateProjectSummary(projectId: string): Promise<{
+    description: string;
+    responsibilities: string[];
+    owns: string[];
+    projectType: string;
+    exports?: string;
+    keywords: string[];
+  } | null> {
+    const projectBrief = this.getDocument(projectId, "projectBrief");
+    const techContext = this.getDocument(projectId, "techContext");
+    
+    if (!projectBrief) {
+      console.error(`Cannot generate project summary: projectBrief not found for ${projectId}`);
+      return null;
+    }
+    
+    console.error(`Generating project summary for registry: ${projectId}`);
+    
+    const prompt = `Analyze the following project documentation and extract a structured summary.
+
+PROJECT BRIEF:
+${projectBrief.content}
+
+${techContext ? `TECHNICAL CONTEXT:\n${techContext.content}` : ''}
+
+Extract the following information in JSON format:
+{
+  "description": "A concise 1-2 sentence description of what this project does",
+  "responsibilities": ["List of 3-5 specific things this project is responsible for"],
+  "owns": ["File patterns or types this project owns, e.g., '*DTO.ts', 'services/', 'controllers/'"],
+  "projectType": "One of: api, library, frontend, backend, cli, service, monorepo, fullstack",
+  "exports": "Package name if it's a library (e.g., '@company/lib-dtos'), or null if not applicable",
+  "keywords": ["5-8 keywords describing this project"]
+}
+
+IMPORTANT:
+- Be specific about responsibilities - they help the orchestrator decide where code belongs
+- For "owns", think about what file patterns ONLY this project should create
+- If it's a library, identify what it exports/provides to other projects
+
+Respond ONLY with the JSON object, no markdown or explanation.`;
+
+    try {
+      const result = await this.callResponsesAPI(prompt);
+      
+      // Parse JSON response
+      const jsonMatch = result.content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error(`Failed to parse project summary JSON for ${projectId}`);
+        return null;
+      }
+      
+      const summary = JSON.parse(jsonMatch[0]);
+      
+      console.error(`Project summary generated for ${projectId}:`);
+      console.error(`  - Type: ${summary.projectType}`);
+      console.error(`  - Responsibilities: ${summary.responsibilities?.length || 0}`);
+      console.error(`  - Owns: ${summary.owns?.length || 0}`);
+      
+      return {
+        description: summary.description || '',
+        responsibilities: summary.responsibilities || [],
+        owns: summary.owns || [],
+        projectType: summary.projectType || 'unknown',
+        exports: summary.exports || undefined,
+        keywords: summary.keywords || [],
+      };
+    } catch (error) {
+      console.error(`Error generating project summary: ${error}`);
+      return null;
+    }
+  }
 }
 
 /**
