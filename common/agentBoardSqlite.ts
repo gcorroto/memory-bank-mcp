@@ -6,6 +6,9 @@
 
 import { databaseManager } from './database.js';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 // ============================================================================
 // Types
@@ -79,6 +82,7 @@ export class AgentBoardSqlite {
      * Register a new agent for this project.
      * Automatically deactivates any previous active agent.
      * The MCP generates the hash suffix - client only provides base ID.
+     * Also syncs project keywords/responsibilities from registry to SQLite.
      */
     registerAgent(baseAgentId: string, sessionId?: string): { agentId: string; sessionId: string } {
         const db = databaseManager.getConnection();
@@ -91,6 +95,23 @@ export class AgentBoardSqlite {
         const effectiveSessionId = sessionId || crypto.randomUUID();
         
         const now = new Date().toISOString();
+        
+        // Get project metadata from registry (keywords, responsibilities) - sync read
+        let keywords: string[] = [];
+        let responsibilities: string[] = [];
+        try {
+            const registryPath = path.join(os.homedir(), '.memorybank', 'global_registry.json');
+            if (fs.existsSync(registryPath)) {
+                const registryData = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
+                const project = registryData.projects?.find((p: any) => p.projectId === this.projectId);
+                if (project) {
+                    keywords = project.keywords || [];
+                    responsibilities = project.responsibilities || [];
+                }
+            }
+        } catch (e) {
+            // Registry not available, continue without metadata
+        }
 
         return databaseManager.transaction(() => {
             // Deactivate any currently active agents for this project
@@ -100,11 +121,18 @@ export class AgentBoardSqlite {
                 WHERE project_id = ? AND status = 'ACTIVE'
             `).run(now, this.projectId);
 
-            // Insert new agent as ACTIVE
+            // Insert new agent as ACTIVE with project metadata
             db.prepare(`
-                INSERT INTO agents (id, project_id, session_id, status, focus, last_heartbeat)
-                VALUES (?, ?, ?, 'ACTIVE', '-', ?)
-            `).run(fullAgentId, this.projectId, effectiveSessionId, now);
+                INSERT INTO agents (id, project_id, session_id, status, focus, last_heartbeat, keywords, responsibilities)
+                VALUES (?, ?, ?, 'ACTIVE', '-', ?, ?, ?)
+            `).run(
+                fullAgentId, 
+                this.projectId, 
+                effectiveSessionId, 
+                now,
+                JSON.stringify(keywords),
+                JSON.stringify(responsibilities)
+            );
 
             // Log the registration
             this.logMessage(fullAgentId, `Agent registered and activated`);

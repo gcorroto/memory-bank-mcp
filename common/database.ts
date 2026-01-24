@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 
-const SCHEMA_VERSION = 2;  // v2: Added orchestrator_logs table
+const SCHEMA_VERSION = 3;  // v2: Added orchestrator_logs table, v3: Added keywords/responsibilities to agents
 
 /**
  * SQL Schema for Agent Board
@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS agents (
     status TEXT NOT NULL DEFAULT 'ACTIVE',  -- ACTIVE, INACTIVE
     focus TEXT DEFAULT '-',                 -- Current task/file being worked on
     last_heartbeat TEXT NOT NULL,           -- ISO timestamp of last activity
+    keywords TEXT,                          -- JSON array of project keywords (synced from registry)
+    responsibilities TEXT,                  -- JSON array of project responsibilities (synced from registry)
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (id, project_id)
 );
@@ -196,6 +198,27 @@ class DatabaseManager {
             
             // Run schema creation (IF NOT EXISTS makes it safe)
             this.db.exec(SCHEMA_SQL);
+            
+            // v3 migration: Add keywords and responsibilities columns to agents table
+            if (currentVersion < 3) {
+                try {
+                    // Check if columns already exist
+                    const tableInfo = this.db.prepare("PRAGMA table_info(agents)").all() as any[];
+                    const hasKeywords = tableInfo.some(col => col.name === 'keywords');
+                    const hasResponsibilities = tableInfo.some(col => col.name === 'responsibilities');
+                    
+                    if (!hasKeywords) {
+                        this.db.exec('ALTER TABLE agents ADD COLUMN keywords TEXT');
+                        console.error('[Database] Added keywords column to agents table');
+                    }
+                    if (!hasResponsibilities) {
+                        this.db.exec('ALTER TABLE agents ADD COLUMN responsibilities TEXT');
+                        console.error('[Database] Added responsibilities column to agents table');
+                    }
+                } catch (alterError: any) {
+                    console.error(`[Database] Warning during v3 migration: ${alterError.message}`);
+                }
+            }
 
             // Record/update schema version
             this.db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
