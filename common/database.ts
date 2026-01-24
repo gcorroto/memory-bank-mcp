@@ -93,6 +93,27 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_project ON messages(project_id);
 CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(timestamp);
 
+-- Orchestrator Logs: Route task decisions and searches
+CREATE TABLE IF NOT EXISTS orchestrator_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,               -- Project that requested the routing
+    task_description TEXT NOT NULL,         -- Original task description
+    action TEXT NOT NULL,                   -- proceed, delegate, mixed
+    my_responsibilities TEXT,               -- JSON array of responsibilities
+    delegations TEXT,                       -- JSON array of delegations
+    suggested_imports TEXT,                 -- JSON array of imports
+    architecture_notes TEXT,                -- Explanation from orchestrator
+    searches_performed TEXT,                -- JSON array of searches done
+    warning TEXT,                           -- Any warnings
+    success INTEGER NOT NULL DEFAULT 1,     -- 1=success, 0=failure
+    model_used TEXT,                        -- Model used for routing
+    timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_orchestrator_project ON orchestrator_logs(project_id);
+CREATE INDEX IF NOT EXISTS idx_orchestrator_time ON orchestrator_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_orchestrator_action ON orchestrator_logs(action);
+
 -- Schema versioning for future migrations
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY,

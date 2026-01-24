@@ -630,6 +630,144 @@ export class AgentBoardSqlite {
 }
 
 // ============================================================================
+// Orchestrator Log Types and Functions
+// ============================================================================
+
+export interface OrchestratorLogRecord {
+    id: number;
+    projectId: string;
+    taskDescription: string;
+    action: 'proceed' | 'delegate' | 'mixed';
+    myResponsibilities: string[];
+    delegations: Array<{
+        targetProject: string;
+        taskTitle: string;
+        taskDescription: string;
+        reasoning: string;
+    }>;
+    suggestedImports: string[];
+    architectureNotes: string;
+    searchesPerformed: string[];
+    warning?: string;
+    success: boolean;
+    modelUsed: string;
+    timestamp: string;
+}
+
+export interface OrchestratorLogInput {
+    projectId: string;
+    taskDescription: string;
+    action: 'proceed' | 'delegate' | 'mixed';
+    myResponsibilities: string[];
+    delegations: Array<{
+        targetProject: string;
+        taskTitle: string;
+        taskDescription: string;
+        reasoning: string;
+    }>;
+    suggestedImports: string[];
+    architectureNotes: string;
+    searchesPerformed?: string[];
+    warning?: string;
+    success: boolean;
+    modelUsed: string;
+}
+
+/**
+ * Save an orchestrator routing decision to the database
+ */
+export function saveOrchestratorLog(log: OrchestratorLogInput): number {
+    const db = databaseManager.getConnection();
+    
+    const result = db.prepare(`
+        INSERT INTO orchestrator_logs (
+            project_id, task_description, action, my_responsibilities,
+            delegations, suggested_imports, architecture_notes,
+            searches_performed, warning, success, model_used
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+        log.projectId,
+        log.taskDescription,
+        log.action,
+        JSON.stringify(log.myResponsibilities),
+        JSON.stringify(log.delegations),
+        JSON.stringify(log.suggestedImports),
+        log.architectureNotes,
+        JSON.stringify(log.searchesPerformed || []),
+        log.warning || null,
+        log.success ? 1 : 0,
+        log.modelUsed
+    );
+    
+    // Flush for external readers (VSCode extension)
+    databaseManager.flushForExternalReaders();
+    
+    console.error(`[Orchestrator] Saved routing log (ID: ${result.lastInsertRowid})`);
+    
+    return result.lastInsertRowid as number;
+}
+
+/**
+ * Get orchestrator logs for a project
+ */
+export function getOrchestratorLogs(projectId?: string, limit: number = 50): OrchestratorLogRecord[] {
+    const db = databaseManager.getConnection();
+    
+    let query = `
+        SELECT * FROM orchestrator_logs
+        ${projectId ? 'WHERE project_id = ?' : ''}
+        ORDER BY timestamp DESC
+        LIMIT ?
+    `;
+    
+    const params = projectId ? [projectId, limit] : [limit];
+    const rows = db.prepare(query).all(...params) as any[];
+    
+    return rows.map(row => ({
+        id: row.id,
+        projectId: row.project_id,
+        taskDescription: row.task_description,
+        action: row.action,
+        myResponsibilities: JSON.parse(row.my_responsibilities || '[]'),
+        delegations: JSON.parse(row.delegations || '[]'),
+        suggestedImports: JSON.parse(row.suggested_imports || '[]'),
+        architectureNotes: row.architecture_notes,
+        searchesPerformed: JSON.parse(row.searches_performed || '[]'),
+        warning: row.warning,
+        success: row.success === 1,
+        modelUsed: row.model_used,
+        timestamp: row.timestamp,
+    }));
+}
+
+/**
+ * Get a single orchestrator log by ID
+ */
+export function getOrchestratorLogById(id: number): OrchestratorLogRecord | null {
+    const db = databaseManager.getConnection();
+    
+    const row = db.prepare(`SELECT * FROM orchestrator_logs WHERE id = ?`).get(id) as any;
+    
+    if (!row) return null;
+    
+    return {
+        id: row.id,
+        projectId: row.project_id,
+        taskDescription: row.task_description,
+        action: row.action,
+        myResponsibilities: JSON.parse(row.my_responsibilities || '[]'),
+        delegations: JSON.parse(row.delegations || '[]'),
+        suggestedImports: JSON.parse(row.suggested_imports || '[]'),
+        architectureNotes: row.architecture_notes,
+        searchesPerformed: JSON.parse(row.searches_performed || '[]'),
+        warning: row.warning,
+        success: row.success === 1,
+        modelUsed: row.model_used,
+        timestamp: row.timestamp,
+    };
+}
+
+// ============================================================================
 // Cleanup utilities
 // ============================================================================
 

@@ -11,6 +11,7 @@ import OpenAI from "openai";
 import { RegistryManager, ProjectCard } from "../common/registryManager.js";
 import { IndexManager } from "../common/indexManager.js";
 import { searchMemory } from "./searchMemory.js";
+import { saveOrchestratorLog } from "../common/agentBoardSqlite.js";
 
 export interface RouteTaskParams {
   projectId: string;        // Current project making the request
@@ -287,6 +288,9 @@ export async function routeTaskTool(
     };
   }
   
+  // Model used for routing (needed for logging both success and error cases)
+  const model = process.env.MEMORYBANK_ROUTING_MODEL || "gpt-4o";
+  
   try {
     const client = new OpenAI({ apiKey });
     
@@ -295,10 +299,7 @@ export async function routeTaskTool(
       .replace('{currentProject}', projectId)
       .replace('{taskDescription}', taskDescription);
     
-    console.error(`Calling AI orchestrator with tool access...`);
-    
-    // Use chat completions with function calling
-    const model = process.env.MEMORYBANK_ROUTING_MODEL || "gpt-4o";
+    console.error(`Calling AI orchestrator with tool access (${model})...`);
     
     // Initialize conversation
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -382,7 +383,8 @@ export async function routeTaskTool(
     const jsonMatch = finalResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error(`Failed to parse orchestrator response`);
-      return {
+      
+      const parseErrorResult: RouteTaskResult = {
         success: false,
         action: 'proceed',
         myResponsibilities: [],
@@ -391,6 +393,27 @@ export async function routeTaskTool(
         architectureNotes: 'Failed to parse AI response.',
         warning: 'Orchestrator analysis failed. Review task manually.',
       };
+      
+      // Persist parse failure
+      try {
+        saveOrchestratorLog({
+          projectId: params.projectId,
+          taskDescription: params.taskDescription,
+          action: 'proceed',
+          myResponsibilities: [],
+          delegations: [],
+          suggestedImports: [],
+          architectureNotes: parseErrorResult.architectureNotes,
+          searchesPerformed: [],
+          warning: parseErrorResult.warning,
+          success: false,
+          modelUsed: model,
+        });
+      } catch (persistError: any) {
+        console.error(`Warning: Failed to persist parse error log: ${persistError.message}`);
+      }
+      
+      return parseErrorResult;
     }
     
     const result = JSON.parse(jsonMatch[0]);
@@ -410,7 +433,7 @@ export async function routeTaskTool(
       }
     }
     
-    return {
+    const routeResult: RouteTaskResult = {
       success: true,
       action: result.action || 'proceed',
       myResponsibilities: result.myResponsibilities || [],
@@ -420,10 +443,31 @@ export async function routeTaskTool(
       warning: result.warning,
     };
     
+    // Persist to SQLite for extension visualization
+    try {
+      saveOrchestratorLog({
+        projectId: params.projectId,
+        taskDescription: params.taskDescription,
+        action: routeResult.action,
+        myResponsibilities: routeResult.myResponsibilities,
+        delegations: routeResult.delegations,
+        suggestedImports: routeResult.suggestedImports,
+        architectureNotes: routeResult.architectureNotes,
+        searchesPerformed: result.searchesPerformed || [],
+        warning: routeResult.warning,
+        success: true,
+        modelUsed: model,
+      });
+    } catch (persistError: any) {
+      console.error(`Warning: Failed to persist orchestrator log: ${persistError.message}`);
+    }
+    
+    return routeResult;
+    
   } catch (error: any) {
     console.error(`Error in task routing: ${error.message}`);
     
-    return {
+    const errorResult: RouteTaskResult = {
       success: false,
       action: 'proceed',
       myResponsibilities: [],
@@ -432,6 +476,27 @@ export async function routeTaskTool(
       architectureNotes: `Error analyzing task: ${error.message}`,
       warning: 'Orchestrator failed. Review task distribution manually.',
     };
+    
+    // Persist failed attempts too
+    try {
+      saveOrchestratorLog({
+        projectId: params.projectId,
+        taskDescription: params.taskDescription,
+        action: 'proceed',
+        myResponsibilities: [],
+        delegations: [],
+        suggestedImports: [],
+        architectureNotes: errorResult.architectureNotes,
+        searchesPerformed: [],
+        warning: errorResult.warning,
+        success: false,
+        modelUsed: model,
+      });
+    } catch (persistError: any) {
+      console.error(`Warning: Failed to persist error log: ${persistError.message}`);
+    }
+    
+    return errorResult;
   }
 }
 
