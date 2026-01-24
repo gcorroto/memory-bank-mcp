@@ -1120,7 +1120,7 @@ server.tool(
     const result = await routeTaskTool({
       projectId: args.projectId,
       taskDescription: args.taskDescription
-    });
+    }, indexManager);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };

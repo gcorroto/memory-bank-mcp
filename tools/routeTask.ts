@@ -2,10 +2,15 @@
  * @fileoverview Task Routing Orchestrator
  * Uses AI reasoning to analyze tasks and distribute work across projects
  * based on their responsibilities. MANDATORY before any implementation.
+ * 
+ * The orchestrator has access to semantic search tools to verify where
+ * code actually exists, not just rely on declared responsibilities.
  */
 
 import OpenAI from "openai";
 import { RegistryManager, ProjectCard } from "../common/registryManager.js";
+import { IndexManager } from "../common/indexManager.js";
+import { searchMemory } from "./searchMemory.js";
 
 export interface RouteTaskParams {
   projectId: string;        // Current project making the request
@@ -68,9 +73,100 @@ function buildProjectsContext(projects: ProjectCard[], currentProjectId: string)
 }
 
 /**
+ * Tools available to the orchestrator for verification
+ */
+const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "semantic_search",
+      description: "Search for code semantically in a specific project. Use this to verify if code already exists, where implementations are located, or to understand project structure before routing decisions.",
+      parameters: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "The project ID to search in",
+          },
+          query: {
+            type: "string", 
+            description: "Natural language query describing what you're looking for (e.g., 'UserDTO class', 'authentication service', 'database connection')",
+          },
+        },
+        required: ["projectId", "query"],
+      },
+    },
+  },
+];
+
+/**
+ * Executes a tool call from the orchestrator
+ */
+async function executeToolCall(
+  toolName: string, 
+  args: Record<string, any>,
+  allProjects: ProjectCard[],
+  indexManager: IndexManager
+): Promise<string> {
+  if (toolName === "semantic_search") {
+    const { projectId, query } = args;
+    
+    // Verify project exists
+    const projectExists = allProjects.some(p => p.projectId === projectId);
+    if (!projectExists) {
+      return JSON.stringify({ 
+        error: `Project '${projectId}' not found. Available: ${allProjects.map(p => p.projectId).join(', ')}` 
+      });
+    }
+    
+    try {
+      console.error(`  [Tool] Searching in ${projectId}: "${query}"`);
+      
+      const result = await searchMemory({
+        projectId,
+        query,
+        topK: 5,
+        minScore: 0.5,
+      }, indexManager);
+      
+      if (!result.success || result.results.length === 0) {
+        return JSON.stringify({ 
+          found: false, 
+          message: `No results found for "${query}" in project ${projectId}` 
+        });
+      }
+      
+      // Return summarized results (not full code, just locations and snippets)
+      const summary = result.results.map(r => ({
+        file: r.filePath,
+        type: r.chunkType,
+        name: r.name,
+        score: r.score.toFixed(2),
+        preview: r.content.slice(0, 200) + (r.content.length > 200 ? '...' : ''),
+      }));
+      
+      return JSON.stringify({ 
+        found: true, 
+        count: result.results.length,
+        results: summary 
+      });
+    } catch (error: any) {
+      return JSON.stringify({ error: error.message });
+    }
+  }
+  
+  return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+}
+
+/**
  * The main routing prompt for the AI orchestrator
  */
 const ROUTING_PROMPT = `You are a Task Routing Orchestrator for a multi-project workspace. Your job is to analyze a task and determine which parts belong to which project based on their responsibilities.
+
+You have access to a semantic_search tool that allows you to search for code in any project. USE IT when:
+- You need to verify if something already exists
+- A task could belong to multiple projects and you need to check where the related code is
+- You want to confirm where implementations are located before making routing decisions
 
 {projectsContext}
 
@@ -78,22 +174,24 @@ const ROUTING_PROMPT = `You are a Task Routing Orchestrator for a multi-project 
 **From Project**: {currentProject}
 **Task Description**: {taskDescription}
 
-## Your Analysis
+## Your Analysis Process
 
-Analyze the task and determine:
-1. What components/code need to be created or modified?
-2. Which project is responsible for each component based on their declared responsibilities?
-3. If something doesn't exist in any project, it can be created by the requesting project
-4. If something SHOULD exist in another project (based on responsibilities), it must be delegated
+1. First, identify what components/code need to be created or modified
+2. Check the declared responsibilities of each project
+3. If there's ambiguity (task could match multiple projects), USE semantic_search to verify:
+   - Search for related existing code
+   - Check which project actually has the relevant implementations
+4. Make your routing decision based on BOTH responsibilities AND actual code location
 
 ## Rules
 - If a project is responsible for DTOs, ALL DTOs must be created there, not in the API
 - If a project is responsible for services, shared services go there
 - If a project is responsible for utils/common code, shared utilities go there
 - The requesting project can ONLY implement what falls within its responsibilities
-- When in doubt, check the "owns" patterns to see what file types belong where
+- When in doubt, USE semantic_search to verify where similar code exists
+- If code exists in a project, new related code should likely go there too
 
-## Response Format
+## Response Format (after your analysis and any tool calls)
 Respond with a JSON object:
 {
   "action": "proceed" | "delegate" | "mixed",
@@ -108,22 +206,28 @@ Respond with a JSON object:
   ],
   "suggestedImports": ["packages or modules to import after delegations complete"],
   "architectureNotes": "Explanation of the distribution decision",
-  "warning": "Optional warning if something seems off"
+  "warning": "Optional warning if something seems off",
+  "searchesPerformed": ["List of searches you performed to verify the decision"]
 }
 
 IMPORTANT:
 - "action" is "proceed" if everything can be done by the requesting project
-- "action" is "delegate" if everything needs to go to other projects
+- "action" is "delegate" if everything needs to go to other projects  
 - "action" is "mixed" if some work is local and some needs delegation
-- Be specific in taskDescription so the receiving project knows exactly what to create
-- Always explain the reasoning based on project responsibilities
+- Use semantic_search when responsibilities are ambiguous or could match multiple projects
+- Document what searches you performed in "searchesPerformed"
+- Responde siempre en ESPAÑOL
 
-Respond ONLY with the JSON object.`;
+Respond ONLY with the JSON object after completing your analysis.`;
 
 /**
  * Routes a task to the appropriate project(s) based on responsibilities
+ * Uses function calling to allow the AI to perform semantic searches when needed
  */
-export async function routeTaskTool(params: RouteTaskParams): Promise<RouteTaskResult> {
+export async function routeTaskTool(
+  params: RouteTaskParams,
+  indexManager: IndexManager
+): Promise<RouteTaskResult> {
   const { projectId, taskDescription } = params;
   
   if (!taskDescription || taskDescription.trim() === '') {
@@ -191,39 +295,91 @@ export async function routeTaskTool(params: RouteTaskParams): Promise<RouteTaskR
       .replace('{currentProject}', projectId)
       .replace('{taskDescription}', taskDescription);
     
-    console.error(`Calling AI orchestrator...`);
+    console.error(`Calling AI orchestrator with tool access...`);
     
-    // Use reasoning model for better analysis
-    const model = process.env.MEMORYBANK_REASONING_MODEL || "gpt-5-mini";
+    // Use chat completions with function calling
+    const model = process.env.MEMORYBANK_ROUTING_MODEL || "gpt-4o";
     
-    const response = await (client as any).responses.create({
-      model,
-      reasoning: {
-        effort: "medium",
+    // Initialize conversation
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: "You are a Task Routing Orchestrator. Analyze tasks and route them to appropriate projects. You can use semantic_search to verify where code exists before making decisions. Always respond with JSON after your analysis.",
       },
-      input: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      max_output_tokens: 4000,
-    });
+      {
+        role: "user",
+        content: prompt,
+      },
+    ];
     
-    // Extract content from response
-    let content = "";
-    for (const item of response.output || []) {
-      if (item.type === "message" && item.content) {
-        for (const contentItem of item.content) {
-          if (contentItem.type === "output_text") {
-            content += contentItem.text;
-          }
+    // Tool calling loop (max 5 iterations to prevent infinite loops)
+    let iterations = 0;
+    const maxIterations = 5;
+    let finalResponse: string | null = null;
+    
+    while (iterations < maxIterations) {
+      iterations++;
+      console.error(`  Iteration ${iterations}/${maxIterations}`);
+      
+      const response = await client.chat.completions.create({
+        model,
+        messages,
+        tools: ORCHESTRATOR_TOOLS,
+        tool_choice: "auto",
+        max_tokens: 4000,
+      });
+      
+      const message = response.choices[0]?.message;
+      
+      if (!message) {
+        console.error(`  No message in response`);
+        break;
+      }
+      
+      // Check if there are tool calls
+      if (message.tool_calls && message.tool_calls.length > 0) {
+        console.error(`  Model requested ${message.tool_calls.length} tool call(s)`);
+        
+        // Add assistant message with tool calls
+        messages.push(message);
+        
+        // Execute each tool call
+        for (const toolCall of message.tool_calls) {
+          const toolName = toolCall.function.name;
+          const toolArgs = JSON.parse(toolCall.function.arguments);
+          
+          const toolResult = await executeToolCall(toolName, toolArgs, allProjects, indexManager);
+          
+          // Add tool result to messages
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: toolResult,
+          });
         }
+      } else {
+        // No tool calls, this is the final response
+        finalResponse = message.content;
+        console.error(`  Final response received`);
+        break;
       }
     }
     
+    if (!finalResponse) {
+      console.error(`  No final response after ${iterations} iterations`);
+      return {
+        success: false,
+        action: 'proceed',
+        myResponsibilities: [],
+        delegations: [],
+        suggestedImports: [],
+        architectureNotes: 'Orchestrator did not produce a final response.',
+        warning: 'Analysis incomplete. Review task manually.',
+      };
+    }
+    
     // Parse JSON response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = finalResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error(`Failed to parse orchestrator response`);
       return {
@@ -243,6 +399,9 @@ export async function routeTaskTool(params: RouteTaskParams): Promise<RouteTaskR
     console.error(`  Action: ${result.action}`);
     console.error(`  My responsibilities: ${result.myResponsibilities?.length || 0}`);
     console.error(`  Delegations: ${result.delegations?.length || 0}`);
+    if (result.searchesPerformed?.length > 0) {
+      console.error(`  Searches performed: ${result.searchesPerformed.length}`);
+    }
     
     if (result.delegations && result.delegations.length > 0) {
       console.error(`\n  Delegations:`);
@@ -263,50 +422,6 @@ export async function routeTaskTool(params: RouteTaskParams): Promise<RouteTaskR
     
   } catch (error: any) {
     console.error(`Error in task routing: ${error.message}`);
-    
-    // Fallback to chat completions if responses API fails
-    if (error?.status === 404 || error?.code === "model_not_found") {
-      try {
-        const client = new OpenAI({ apiKey });
-        const prompt = ROUTING_PROMPT
-          .replace('{projectsContext}', projectsContext)
-          .replace('{currentProject}', projectId)
-          .replace('{taskDescription}', taskDescription);
-        
-        const response = await client.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content: "You are a Task Routing Orchestrator. Analyze tasks and route them to the appropriate projects based on responsibilities. Respond with JSON only.",
-            },
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          max_tokens: 4000,
-        });
-        
-        const content = response.choices[0]?.message?.content || "";
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        
-        if (jsonMatch) {
-          const result = JSON.parse(jsonMatch[0]);
-          return {
-            success: true,
-            action: result.action || 'proceed',
-            myResponsibilities: result.myResponsibilities || [],
-            delegations: result.delegations || [],
-            suggestedImports: result.suggestedImports || [],
-            architectureNotes: result.architectureNotes || '',
-            warning: result.warning,
-          };
-        }
-      } catch (fallbackError) {
-        console.error(`Fallback also failed: ${fallbackError}`);
-      }
-    }
     
     return {
       success: false,
