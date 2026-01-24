@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;  // v2: Added orchestrator_logs table
 
 /**
  * SQL Schema for Agent Board
@@ -197,10 +197,8 @@ class DatabaseManager {
             // Run schema creation (IF NOT EXISTS makes it safe)
             this.db.exec(SCHEMA_SQL);
 
-            // Record schema version
-            if (currentVersion === 0) {
-                this.db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
-            }
+            // Record/update schema version
+            this.db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
 
             console.error(`[Database] Schema initialized at v${SCHEMA_VERSION}`);
         }
