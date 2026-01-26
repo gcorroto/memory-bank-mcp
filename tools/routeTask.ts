@@ -316,22 +316,32 @@ export async function routeTaskTool(
     while (iterations < maxIterations) {
       iterations++;
       console.error(`  Iteration ${iterations}/${maxIterations}`);
-      let inst = "You are a Task Routing Orchestrator. Analyze tasks and route them to appropriate projects. You can use semantic_search to verify where code exists before making decisions. Always respond with JSON after your analysis. ";
-      if (iterations === maxIterations-1) {
-        inst += " This is your FINAL chance to provide a complete response. If you are stuck in a loop, provide your best guess based on the information you have.";
+      
+      // Instructions that hint the model to finish if needed
+      let instructions = "You are a Task Routing Orchestrator. Analyze tasks and route them to appropriate projects. You can use semantic_search to verify where code exists before making decisions. Always respond with JSON after your analysis.";
+      if (iterations >= maxIterations - 1) {
+        instructions += " IMPORTANT: This is your final iteration. You MUST provide a complete JSON response NOW based on available information.";
       }
+      
       // Call Responses API with reasoning
       const response = await (client as any).responses.create({
         model,
         reasoning: {
           effort: reasoningEffort,
         },
-        instructions: "You are a Task Routing Orchestrator. Analyze tasks and route them to appropriate projects. You can use semantic_search to verify where code exists before making decisions. Always respond with JSON after your analysis.",
+        instructions,
         input,
         tools: ORCHESTRATOR_TOOLS,
         tool_choice: "auto",
         max_output_tokens: 8000,
       });
+      
+      // Debug: log full response structure
+      console.error(`  Response status: ${response.status}`);
+      console.error(`  Output items: ${response.output?.length || 0}`);
+      for (const item of response.output || []) {
+        console.error(`    - Item type: ${item.type}`);
+      }
       
       // Process output items from Responses API
       let hasToolCalls = false;
