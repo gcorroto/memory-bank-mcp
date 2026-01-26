@@ -74,28 +74,26 @@ function buildProjectsContext(projects: ProjectCard[], currentProjectId: string)
 }
 
 /**
- * Tools available to the orchestrator for verification
+ * Tools available to the orchestrator for verification (Responses API format)
  */
-const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+const ORCHESTRATOR_TOOLS = [
   {
-    type: "function",
-    function: {
-      name: "semantic_search",
-      description: "Search for code semantically in a specific project. Use this to verify if code already exists, where implementations are located, or to understand project structure before routing decisions.",
-      parameters: {
-        type: "object",
-        properties: {
-          projectId: {
-            type: "string",
-            description: "The project ID to search in",
-          },
-          query: {
-            type: "string", 
-            description: "Natural language query describing what you're looking for (e.g., 'UserDTO class', 'authentication service', 'database connection')",
-          },
+    type: "function" as const,
+    name: "semantic_search",
+    description: "Search for code semantically in a specific project. Use this to verify if code already exists, where implementations are located, or to understand project structure before routing decisions.",
+    parameters: {
+      type: "object",
+      properties: {
+        projectId: {
+          type: "string",
+          description: "The project ID to search in",
         },
-        required: ["projectId", "query"],
+        query: {
+          type: "string", 
+          description: "Natural language query describing what you're looking for (e.g., 'UserDTO class', 'authentication service', 'database connection')",
+        },
       },
+      required: ["projectId", "query"],
     },
   },
 ];
@@ -288,8 +286,9 @@ export async function routeTaskTool(
     };
   }
   
-  // Model used for routing (needed for logging both success and error cases)
-  const model = process.env.MEMORYBANK_ROUTING_MODEL || "gpt-4o";
+  // Model and reasoning config (use same as project knowledge service)
+  const model = process.env.MEMORYBANK_REASONING_MODEL || "gpt-5-mini";
+  const reasoningEffort = (process.env.MEMORYBANK_REASONING_EFFORT as "low" | "medium" | "high") || "medium";
   
   try {
     const client = new OpenAI({ apiKey });
@@ -299,14 +298,10 @@ export async function routeTaskTool(
       .replace('{currentProject}', projectId)
       .replace('{taskDescription}', taskDescription);
     
-    console.error(`Calling AI orchestrator with tool access (${model})...`);
+    console.error(`Calling AI orchestrator with Responses API (${model}, effort: ${reasoningEffort})...`);
     
-    // Initialize conversation
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      {
-        role: "system",
-        content: "You are a Task Routing Orchestrator. Analyze tasks and route them to appropriate projects. You can use semantic_search to verify where code exists before making decisions. Always respond with JSON after your analysis.",
-      },
+    // Build initial input for Responses API
+    const input: any[] = [
       {
         role: "user",
         content: prompt,
@@ -322,46 +317,67 @@ export async function routeTaskTool(
       iterations++;
       console.error(`  Iteration ${iterations}/${maxIterations}`);
       
-      const response = await client.chat.completions.create({
+      // Call Responses API with reasoning
+      const response = await (client as any).responses.create({
         model,
-        messages,
+        reasoning: {
+          effort: reasoningEffort,
+        },
+        instructions: "You are a Task Routing Orchestrator. Analyze tasks and route them to appropriate projects. You can use semantic_search to verify where code exists before making decisions. Always respond with JSON after your analysis.",
+        input,
         tools: ORCHESTRATOR_TOOLS,
         tool_choice: "auto",
-        max_tokens: 4000,
+        max_output_tokens: 8000,
       });
       
-      const message = response.choices[0]?.message;
+      // Process output items from Responses API
+      let hasToolCalls = false;
+      const toolCalls: Array<{ id: string; name: string; arguments: string }> = [];
       
-      if (!message) {
-        console.error(`  No message in response`);
-        break;
+      for (const item of response.output || []) {
+        if (item.type === "function_call") {
+          hasToolCalls = true;
+          toolCalls.push({
+            id: item.call_id,
+            name: item.name,
+            arguments: item.arguments,
+          });
+        } else if (item.type === "message" && item.content) {
+          // Extract text content from message
+          for (const contentItem of item.content) {
+            if (contentItem.type === "output_text") {
+              finalResponse = contentItem.text;
+            }
+          }
+        }
       }
       
-      // Check if there are tool calls
-      if (message.tool_calls && message.tool_calls.length > 0) {
-        console.error(`  Model requested ${message.tool_calls.length} tool call(s)`);
+      if (hasToolCalls) {
+        console.error(`  Model requested ${toolCalls.length} tool call(s)`);
         
-        // Add assistant message with tool calls
-        messages.push(message);
-        
-        // Execute each tool call
-        for (const toolCall of message.tool_calls) {
-          const toolName = toolCall.function.name;
-          const toolArgs = JSON.parse(toolCall.function.arguments);
+        // Execute each tool call and add results to input
+        for (const toolCall of toolCalls) {
+          const toolArgs = JSON.parse(toolCall.arguments);
+          const toolResult = await executeToolCall(toolCall.name, toolArgs, allProjects, indexManager);
           
-          const toolResult = await executeToolCall(toolName, toolArgs, allProjects, indexManager);
-          
-          // Add tool result to messages
-          messages.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: toolResult,
+          // Add function call and result to input for next iteration
+          input.push({
+            type: "function_call",
+            call_id: toolCall.id,
+            name: toolCall.name,
+            arguments: toolCall.arguments,
+          });
+          input.push({
+            type: "function_call_output",
+            call_id: toolCall.id,
+            output: toolResult,
           });
         }
-      } else {
-        // No tool calls, this is the final response
-        finalResponse = message.content;
+      } else if (finalResponse) {
         console.error(`  Final response received`);
+        break;
+      } else {
+        console.error(`  No response or tool calls`);
         break;
       }
     }
