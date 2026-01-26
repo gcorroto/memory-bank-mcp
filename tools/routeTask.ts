@@ -308,15 +308,18 @@ export async function routeTaskTool(
       },
     ];
     
-    // Tool calling loop (max 5 iterations to prevent infinite loops)
+    // Tool calling loop (max 20 iterations to prevent infinite loops)
     let iterations = 0;
-    const maxIterations = 5;
+    const maxIterations = 10;
     let finalResponse: string | null = null;
     
     while (iterations < maxIterations) {
       iterations++;
       console.error(`  Iteration ${iterations}/${maxIterations}`);
-      
+      let inst = "You are a Task Routing Orchestrator. Analyze tasks and route them to appropriate projects. You can use semantic_search to verify where code exists before making decisions. Always respond with JSON after your analysis. ";
+      if (iterations === maxIterations-1) {
+        inst += " This is your FINAL chance to provide a complete response. If you are stuck in a loop, provide your best guess based on the information you have.";
+      }
       // Call Responses API with reasoning
       const response = await (client as any).responses.create({
         model,
@@ -333,6 +336,7 @@ export async function routeTaskTool(
       // Process output items from Responses API
       let hasToolCalls = false;
       const toolCalls: Array<{ id: string; name: string; arguments: string }> = [];
+      let messageContent: string | null = null;
       
       for (const item of response.output || []) {
         if (item.type === "function_call") {
@@ -346,11 +350,13 @@ export async function routeTaskTool(
           // Extract text content from message
           for (const contentItem of item.content) {
             if (contentItem.type === "output_text") {
-              finalResponse = contentItem.text;
+              messageContent = contentItem.text;
             }
           }
         }
       }
+      
+      console.error(`  Output: ${hasToolCalls ? toolCalls.length + ' tool call(s)' : 'no tools'}, message: ${messageContent ? 'yes' : 'no'}`);
       
       if (hasToolCalls) {
         console.error(`  Model requested ${toolCalls.length} tool call(s)`);
@@ -373,7 +379,10 @@ export async function routeTaskTool(
             output: toolResult,
           });
         }
-      } else if (finalResponse) {
+        // Continue to next iteration to get the final response
+      } else if (messageContent) {
+        // No tool calls, just a message - this is the final response
+        finalResponse = messageContent;
         console.error(`  Final response received`);
         break;
       } else {
