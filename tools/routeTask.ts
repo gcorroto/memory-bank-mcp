@@ -308,9 +308,9 @@ export async function routeTaskTool(
       },
     ];
     
-    // Tool calling loop (max 20 iterations to prevent infinite loops)
+    // Tool calling loop (high limit allowed as per user request to ensure completion)
     let iterations = 0;
-    const maxIterations = 10;
+    const maxIterations = parseInt(process.env.MEMORYBANK_ROUTE_MAX_ITERATIONS || "100", 10);
     let finalResponse: string | null = null;
     
     while (iterations < maxIterations) {
