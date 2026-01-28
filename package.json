@@ -1,6 +1,6 @@
 {
   "name": "@grec0/memory-bank-mcp",
-  "version": "0.2.12",
+  "version": "0.2.14",
   "description": "MCP server for semantic code indexing with Memory Bank - AI-powered codebase understanding",
   "license": "MIT",
   "author": "@grec0",
