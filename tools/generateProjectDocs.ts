@@ -145,47 +145,60 @@ export async function generateProjectDocs(
     
     // === AUTO-UPDATE GLOBAL REGISTRY ===
     // Generate project summary and update registry with enriched info
-    if (result.documentsGenerated.length > 0 || result.documentsUpdated.length > 0) {
+    // ONLY if generation was successful AND at least one document was generated/updated
+    if (result.success && (result.documentsGenerated.length > 0 || result.documentsUpdated.length > 0)) {
       try {
         console.error(`\n=== Updating Global Registry ===`);
         const summary = await projectKnowledgeService.generateProjectSummary(projectId);
         
         if (summary) {
-          const registryManager = new RegistryManager();
-          let embeddingService: EmbeddingService | undefined;
+          // Validate that the summary has meaningful data before updating registry
+          const hasResponsibilities = summary.responsibilities && summary.responsibilities.length > 0;
+          const hasDescription = summary.description && summary.description.trim().length > 0;
           
-          if (process.env.OPENAI_API_KEY) {
-            try {
-              embeddingService = new EmbeddingService(process.env.OPENAI_API_KEY);
-            } catch (e) {
-              console.error(`Warning: Could not init embedding service: ${e}`);
+          if (!hasResponsibilities && !hasDescription) {
+            console.error(`Warning: Generated summary is empty, skipping registry update`);
+          } else {
+            const registryManager = new RegistryManager();
+            let embeddingService: EmbeddingService | undefined;
+            
+            if (process.env.OPENAI_API_KEY) {
+              try {
+                embeddingService = new EmbeddingService(process.env.OPENAI_API_KEY);
+              } catch (e) {
+                console.error(`Warning: Could not init embedding service: ${e}`);
+              }
             }
+            
+            await registryManager.registerProject(
+              projectId,
+              workspaceRoot,
+              summary.description,
+              summary.keywords,
+              embeddingService,
+              {
+                responsibilities: summary.responsibilities,
+                owns: summary.owns,
+                exports: summary.exports,
+                projectType: summary.projectType,
+              }
+            );
+            
+            console.error(`Registry updated for ${projectId}:`);
+            console.error(`  - Description: ${summary.description.slice(0, 80)}...`);
+            console.error(`  - Type: ${summary.projectType}`);
+            console.error(`  - Responsibilities: ${summary.responsibilities?.length || 0}`);
+            message += ` Registry updated with project summary.`;
           }
-          
-          await registryManager.registerProject(
-            projectId,
-            workspaceRoot,
-            summary.description,
-            summary.keywords,
-            embeddingService,
-            {
-              responsibilities: summary.responsibilities,
-              owns: summary.owns,
-              exports: summary.exports,
-              projectType: summary.projectType,
-            }
-          );
-          
-          console.error(`Registry updated for ${projectId}:`);
-          console.error(`  - Description: ${summary.description.slice(0, 80)}...`);
-          console.error(`  - Type: ${summary.projectType}`);
-          console.error(`  - Responsibilities: ${summary.responsibilities.length}`);
-          message += ` Registry updated with project summary.`;
+        } else {
+          console.error(`Warning: Could not generate project summary, skipping registry update`);
         }
       } catch (regError) {
         console.error(`Warning: Failed to update registry: ${regError}`);
         // Don't fail the whole operation if registry update fails
       }
+    } else if (!result.success) {
+      console.error(`Skipping registry update because documentation generation failed`);
     }
     
     return {

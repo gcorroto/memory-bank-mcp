@@ -469,6 +469,34 @@ export class VectorStore {
       return new Map();
     }
   }
+  
+  /**
+   * Gets all unique project IDs that have indexed chunks
+   * Useful for discovering which projects have code in the vector store
+   */
+  async getIndexedProjectIds(): Promise<string[]> {
+    await this.ensureInitialized();
+    
+    if (!this.table) {
+      return [];
+    }
+    
+    try {
+      const allChunks = await this.table.query().toArray();
+      const projectIds = new Set<string>();
+      
+      for (const chunk of allChunks as any[]) {
+        if (chunk.project_id) {
+          projectIds.add(chunk.project_id);
+        }
+      }
+      
+      return Array.from(projectIds);
+    } catch (error) {
+      console.error(`Error getting indexed project IDs: ${error}`);
+      return [];
+    }
+  }
 }
 
 /**

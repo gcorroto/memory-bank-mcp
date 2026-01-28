@@ -1,4 +1,5 @@
 import * as fs from 'fs/promises';
+import * as fssync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { EmbeddingService } from './embeddingService.js';
@@ -25,19 +26,131 @@ export interface GlobalRegistry {
 export class RegistryManager {
     private globalPath: string;
     private projectVectorStore: ProjectVectorStore;
+    private storagePath: string;
 
     constructor() {
         this.globalPath = path.join(os.homedir(), '.memorybank', 'global_registry.json');
+        this.storagePath = process.env.MEMORYBANK_STORAGE_PATH || path.join(os.homedir(), '.memorybank');
         this.projectVectorStore = new ProjectVectorStore();
     }
 
+    /**
+     * Discovers projects by scanning the projects directory
+     * Used for auto-recovery when registry.json is corrupted/empty
+     */
+    private async discoverProjectsFromDisk(): Promise<string[]> {
+        const projectsDir = path.join(this.storagePath, 'projects');
+        
+        if (!fssync.existsSync(projectsDir)) {
+            return [];
+        }
+        
+        try {
+            const entries = await fs.readdir(projectsDir, { withFileTypes: true });
+            const projectIds = entries
+                .filter(e => e.isDirectory())
+                .map(e => e.name);
+            
+            console.error(`Discovered ${projectIds.length} projects from disk: ${projectIds.join(', ')}`);
+            return projectIds;
+        } catch (error) {
+            console.error(`Error discovering projects from disk: ${error}`);
+            return [];
+        }
+    }
+
+    /**
+     * Ensures the registry exists and returns it
+     * If corrupted/empty, auto-recovers by scanning project folders
+     */
     private async ensureRegistry(): Promise<GlobalRegistry> {
         try {
             await fs.mkdir(path.dirname(this.globalPath), { recursive: true });
             const content = await fs.readFile(this.globalPath, 'utf-8');
-            return JSON.parse(content);
-        } catch {
+            
+            // Validate JSON
+            if (!content || content.trim() === '') {
+                console.error('⚠️  Registry file is empty, attempting auto-recovery...');
+                return await this.autoRecoverRegistry();
+            }
+            
+            const parsed = JSON.parse(content);
+            
+            // Validate structure
+            if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)) {
+                console.error('⚠️  Registry file has invalid structure, attempting auto-recovery...');
+                await this.backupCorruptedRegistry(content);
+                return await this.autoRecoverRegistry();
+            }
+            
+            // Check if registry is suspiciously empty (has folders but no projects)
+            if (parsed.projects.length === 0) {
+                const diskProjects = await this.discoverProjectsFromDisk();
+                if (diskProjects.length > 0) {
+                    console.error(`⚠️  Registry is empty but ${diskProjects.length} projects exist on disk, attempting auto-recovery...`);
+                    await this.backupCorruptedRegistry(content);
+                    return await this.autoRecoverRegistry();
+                }
+            }
+            
+            return parsed;
+        } catch (error: any) {
+            if (error.code === 'ENOENT') {
+                // File doesn't exist, try auto-recovery
+                console.error('Registry file does not exist, attempting auto-recovery...');
+                return await this.autoRecoverRegistry();
+            }
+            
+            // JSON parse error - backup and auto-recover
+            console.error(`Error reading registry: ${error.message}, attempting auto-recovery...`);
+            try {
+                const content = await fs.readFile(this.globalPath, 'utf-8');
+                await this.backupCorruptedRegistry(content);
+            } catch {
+                // Can't read for backup
+            }
+            return await this.autoRecoverRegistry();
+        }
+    }
+
+    /**
+     * Auto-recovers registry by discovering projects from disk
+     * Returns a minimal registry with project IDs - full data will be populated by sync
+     */
+    private async autoRecoverRegistry(): Promise<GlobalRegistry> {
+        const projectIds = await this.discoverProjectsFromDisk();
+        
+        if (projectIds.length === 0) {
+            console.error('No projects found on disk, starting with empty registry');
             return { projects: [] };
+        }
+        
+        console.error(`✓ Auto-recovered ${projectIds.length} projects from disk`);
+        console.error(`  Run 'memorybank_sync_projects' to populate full metadata`);
+        
+        // Return minimal registry - sync will populate the rest
+        const projects: ProjectCard[] = projectIds.map(projectId => ({
+            projectId,
+            path: '', // Will be populated by sync
+            description: '',
+            keywords: [],
+            lastActive: new Date().toISOString(),
+            status: 'ACTIVE' as const
+        }));
+        
+        return { projects };
+    }
+
+    /**
+     * Backs up a corrupted registry file before overwriting
+     */
+    private async backupCorruptedRegistry(content: string): Promise<void> {
+        try {
+            const backupPath = `${this.globalPath}.backup-${Date.now()}`;
+            await fs.writeFile(backupPath, content, 'utf-8');
+            console.error(`Backed up corrupted registry to: ${backupPath}`);
+        } catch (error) {
+            console.error(`Failed to backup corrupted registry: ${error}`);
         }
     }
 
@@ -66,16 +179,27 @@ export class RegistryManager {
 
         const card: ProjectCard = {
             projectId,
-            path: workspacePath,
-            description: description || existing?.description || '',
+            // Preserve existing workspace path if new one is empty/invalid
+            path: (workspacePath && workspacePath.trim() !== '') ? workspacePath : (existing?.path || workspacePath),
+            // Preserve existing description if new one is undefined or empty
+            description: (description !== undefined && description.trim() !== '') ? description : (existing?.description || ''),
+            // Preserve existing keywords if new array is empty
             keywords: keywords.length > 0 ? keywords : (existing?.keywords || []),
             lastActive: new Date().toISOString(),
             status: 'ACTIVE',
             // Enhanced fields - preserve existing if not provided
-            responsibilities: enhancedInfo?.responsibilities || existing?.responsibilities,
-            owns: enhancedInfo?.owns || existing?.owns,
-            exports: enhancedInfo?.exports || existing?.exports,
-            projectType: enhancedInfo?.projectType || existing?.projectType,
+            responsibilities: enhancedInfo?.responsibilities !== undefined 
+                ? (enhancedInfo.responsibilities.length > 0 ? enhancedInfo.responsibilities : existing?.responsibilities)
+                : existing?.responsibilities,
+            owns: enhancedInfo?.owns !== undefined 
+                ? (enhancedInfo.owns.length > 0 ? enhancedInfo.owns : existing?.owns)
+                : existing?.owns,
+            exports: enhancedInfo?.exports !== undefined 
+                ? (enhancedInfo.exports.trim() !== '' ? enhancedInfo.exports : existing?.exports)
+                : existing?.exports,
+            projectType: enhancedInfo?.projectType !== undefined 
+                ? (enhancedInfo.projectType.trim() !== '' ? enhancedInfo.projectType : existing?.projectType)
+                : existing?.projectType,
         };
 
         if (idx >= 0) {
@@ -93,6 +217,8 @@ export class RegistryManager {
             } catch (error) {
                 console.error(`Failed to update project embedding: ${error}`);
             }
+        }
+    }
         }
     }
 
