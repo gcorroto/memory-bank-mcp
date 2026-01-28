@@ -132,6 +132,7 @@ The orchestrator will analyze the task against ALL projects' responsibilities an
 |--------|-------------|
 | `register` | Register agent at session start |
 | `get_board` | View agents, tasks, locks |
+| `get_task_details` | Get full details of a specific task (description, context) |
 | `claim_task` | Claim a pending task |
 | `complete_task` | Mark task as completed |
 | `claim_resource` | Lock a file/resource |
@@ -204,6 +205,10 @@ CONFIRM TO USER
    { "projectId": "{{PROJECT_ID}}", "action": "get_board" }
    ```
    - Look for tasks with `status: "PENDING"` assigned to your project
+   - **Get details** of each pending task to understand requirements:
+   ```json
+   { "projectId": "{{PROJECT_ID}}", "action": "get_task_details", "taskId": "EXT-123456" }
+   ```
    - **If pending tasks exist: prioritize them before user requests**
    - Tasks may come from other agents via `memorybank_delegate_task`
 
@@ -332,6 +337,27 @@ Look for the **Pending Tasks** section:
 - `TASK-XXXXXX`: Internal tasks
 - `EXT-XXXXXX`: External tasks from other projects
 
+#### Getting Task Details
+
+When you see a task in the board, get its full details (description, context):
+```json
+{
+  "projectId": "{{PROJECT_ID}}",
+  "action": "get_task_details",
+  "taskId": "EXT-123456"
+}
+```
+
+This returns the complete task information including:
+- `title`: Short task title
+- `description`: Detailed description and context
+- `fromProject`: Which project delegated this task
+- `status`: Current status (PENDING, IN_PROGRESS, COMPLETED)
+- `createdAt`: When it was created
+- `claimedBy`: Who claimed it (if applicable)
+
+**IMPORTANT**: Always get task details BEFORE claiming a task to understand what needs to be done.
+
 #### Claiming a Task
 
 Before working on a task, claim it to prevent conflicts:
@@ -361,10 +387,21 @@ This changes the task status to `COMPLETED` and logs the completion.
 #### Task Workflow
 
 ```
-PENDING → claim_task → IN_PROGRESS → complete_task → COMPLETED
+PENDING 
+   ↓
+get_task_details (READ full description/context)
+   ↓
+claim_task (CLAIM ownership)
+   ↓
+IN_PROGRESS (WORK on task)
+   ↓
+complete_task (MARK done)
+   ↓
+COMPLETED
 ```
 
 **Important:**
+- Always `get_task_details` BEFORE claiming to understand requirements
 - Always `claim_task` before starting work
 - Always `complete_task` when done (even for external tasks)
 - External tasks (`EXT-*`) were delegated by other projects - completing them notifies the requester
@@ -435,7 +472,8 @@ PENDING → claim_task → IN_PROGRESS → complete_task → COMPLETED
 
 - [ ] Register agent (`action: register`)
 - [ ] Check pending tasks (`action: get_board`)
-- [ ] Claim pending tasks (`action: claim_task`) if any
+- [ ] Get details of pending tasks (`action: get_task_details`) if any
+- [ ] Claim pending tasks (`action: claim_task`) after understanding them
 - [ ] Get active context (`memorybank_get_project_docs`)
 - [ ] Update session (`memorybank_update_context`)
 - [ ] Complete tasks when done (`action: complete_task`)

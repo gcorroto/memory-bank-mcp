@@ -6,7 +6,7 @@ import os from 'os';
 
 export interface ManageAgentsParams {
   projectId: string;
-  action: 'register' | 'update_status' | 'claim_resource' | 'release_resource' | 'get_board' | 'complete_task' | 'claim_task';
+  action: 'register' | 'update_status' | 'claim_resource' | 'release_resource' | 'get_board' | 'complete_task' | 'claim_task' | 'get_task_details';
   agentId?: string;
   sessionId?: string;
   status?: string;
@@ -132,6 +132,21 @@ export async function manageAgentsTool(params: ManageAgentsParams): Promise<any>
                     };
                 }
 
+            case 'get_task_details':
+                if (!taskId) throw new Error('taskId is required for get_task_details');
+                const taskDetails = board.getTaskDetails(taskId);
+                if (taskDetails) {
+                    return {
+                        success: true,
+                        task: taskDetails
+                    };
+                } else {
+                    return {
+                        success: false,
+                        message: `Task ${taskId} not found`
+                    };
+                }
+
             default:
                 throw new Error(`Unknown action: ${action}`);
         }
@@ -145,7 +160,7 @@ export async function manageAgentsTool(params: ManageAgentsParams): Promise<any>
 
 export const manageAgentsToolDefinition = {
   name: "memorybank_manage_agents",
-  description: "Coordina múltiples agentes usando una pizarra central (Agent Board). Permite registrar agentes, pedir recursos (locks) y ver estado global para evitar conflictos.",
+  description: "Coordina múltiples agentes usando una pizarra central (Agent Board). Permite registrar agentes, pedir recursos (locks), ver estado global, y obtener detalles completos de tareas para evitar conflictos.",
   inputSchema: {
     type: "object",
     properties: {
@@ -156,7 +171,7 @@ export const manageAgentsToolDefinition = {
       action: {
         type: "string",
         description: "Acción a realizar",
-        enum: ["register", "update_status", "claim_resource", "release_resource", "get_board", "complete_task", "claim_task"],
+        enum: ["register", "update_status", "claim_resource", "release_resource", "get_board", "complete_task", "claim_task", "get_task_details"],
       },
       agentId: {
         type: "string",
@@ -180,7 +195,7 @@ export const manageAgentsToolDefinition = {
       },
       taskId: {
         type: "string",
-        description: "ID de la tarea para complete_task o claim_task (ej: 'EXT-123456', 'TASK-789012').",
+        description: "ID de la tarea para complete_task, claim_task o get_task_details (ej: 'EXT-123456', 'TASK-789012').",
       },
       workspacePath: {
         type: "string",

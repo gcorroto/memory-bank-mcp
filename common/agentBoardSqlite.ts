@@ -379,6 +379,22 @@ export class AgentBoardSqlite {
     }
 
     /**
+     * Get details of a specific task
+     */
+    getTaskDetails(taskId: string): TaskRecord | null {
+        const db = databaseManager.getConnection();
+        
+        const row = db.prepare(`
+            SELECT * FROM tasks
+            WHERE id = ? AND project_id = ?
+        `).get(taskId, this.projectId) as any;
+
+        if (!row) return null;
+        
+        return this.mapTaskRow(row);
+    }
+
+    /**
      * Complete a task
      */
     completeTask(taskId: string, agentId: string): boolean {

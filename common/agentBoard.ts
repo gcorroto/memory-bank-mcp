@@ -166,6 +166,13 @@ export class AgentBoard {
     }
 
     /**
+     * Get details of a specific task
+     */
+    getTaskDetails(taskId: string) {
+        return this.sqlite.getTaskDetails(taskId);
+    }
+
+    /**
      * Claim a task
      */
     claimTask(taskId: string, agentId: string): boolean {
