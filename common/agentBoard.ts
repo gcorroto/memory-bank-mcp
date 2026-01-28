@@ -152,6 +152,20 @@ export class AgentBoard {
     }
 
     /**
+     * Get all tasks for this project (regardless of status)
+     */
+    getAllTasks() {
+        return this.sqlite.getAllTasks();
+    }
+
+    /**
+     * Get completed tasks for this project
+     */
+    getCompletedTasks() {
+        return this.sqlite.getCompletedTasks();
+    }
+
+    /**
      * Claim a task
      */
     claimTask(taskId: string, agentId: string): boolean {

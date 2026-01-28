@@ -328,6 +328,36 @@ export class AgentBoardSqlite {
     }
 
     /**
+     * Get all tasks for this project (regardless of status)
+     */
+    getAllTasks(): TaskRecord[] {
+        const db = databaseManager.getConnection();
+        
+        const rows = db.prepare(`
+            SELECT * FROM tasks
+            WHERE project_id = ?
+            ORDER BY created_at DESC
+        `).all(this.projectId) as any[];
+
+        return rows.map(this.mapTaskRow);
+    }
+
+    /**
+     * Get completed tasks for this project
+     */
+    getCompletedTasks(): TaskRecord[] {
+        const db = databaseManager.getConnection();
+        
+        const rows = db.prepare(`
+            SELECT * FROM tasks
+            WHERE project_id = ? AND status = 'COMPLETED'
+            ORDER BY completed_at DESC
+        `).all(this.projectId) as any[];
+
+        return rows.map(this.mapTaskRow);
+    }
+
+    /**
      * Claim a task (agent takes ownership)
      */
     claimTask(taskId: string, agentId: string): boolean {

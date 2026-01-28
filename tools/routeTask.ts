@@ -12,6 +12,8 @@ import { RegistryManager, ProjectCard } from "../common/registryManager.js";
 import { IndexManager } from "../common/indexManager.js";
 import { searchMemory } from "./searchMemory.js";
 import { saveOrchestratorLog } from "../common/agentBoardSqlite.js";
+import { AgentBoard } from "../common/agentBoard.js";
+import { textSimilarity, areSimilar } from "../common/textSimilarity.js";
 
 export interface RouteTaskParams {
   projectId: string;        // Current project making the request
@@ -23,6 +25,12 @@ export interface TaskDelegation {
   taskTitle: string;
   taskDescription: string;
   reasoning: string;
+  // Deduplication metadata
+  isDuplicate?: boolean;         // True if this delegation was filtered as duplicate
+  existingTaskId?: string;       // ID of the existing task (if duplicate)
+  existingTaskStatus?: string;   // Status of the existing task (PENDING, IN_PROGRESS, COMPLETED)
+  skipReason?: string;           // Reason why this delegation should be skipped
+  similarity?: number;           // Similarity score with existing task (0-1)
 }
 
 export interface RouteTaskResult {
@@ -218,6 +226,130 @@ IMPORTANT:
 - Responde siempre en ESPAÑOL
 
 Respond ONLY with the JSON object after completing your analysis.`;
+
+/**
+ * Checks if a delegation is a duplicate of an existing task in the target project
+ * @param delegation The proposed delegation
+ * @param targetProject The target project card
+ * @param registryManager Registry manager for resolving project paths
+ * @returns Updated delegation with deduplication metadata
+ */
+async function checkDelegationDuplicate(
+  delegation: TaskDelegation,
+  targetProject: ProjectCard,
+  registryManager: RegistryManager
+): Promise<TaskDelegation> {
+  try {
+    // Initialize AgentBoard for the target project
+    const targetBoard = new AgentBoard(targetProject.path, targetProject.projectId);
+    
+    // Get all tasks (pending, in-progress, and completed)
+    const allTasks = targetBoard.getAllTasks();
+    
+    if (!allTasks || allTasks.length === 0) {
+      // No tasks in the target project, no duplicates
+      return delegation;
+    }
+    
+    // Check for duplicates based on title and description similarity
+    const TITLE_SIMILARITY_THRESHOLD = 0.85; // 85% similar titles = likely duplicate
+    const DESC_SIMILARITY_THRESHOLD = 0.75;  // 75% similar descriptions = likely duplicate
+    
+    for (const existingTask of allTasks) {
+      // Calculate similarities
+      const titleSimilarity = textSimilarity(delegation.taskTitle, existingTask.title);
+      const descSimilarity = existingTask.description 
+        ? textSimilarity(delegation.taskDescription, existingTask.description)
+        : 0;
+      
+      // Check if it's a duplicate
+      const isDuplicateByTitle = titleSimilarity >= TITLE_SIMILARITY_THRESHOLD;
+      const isDuplicateByDesc = descSimilarity >= DESC_SIMILARITY_THRESHOLD;
+      
+      if (isDuplicateByTitle || (isDuplicateByDesc && descSimilarity > 0.5)) {
+        // Found a duplicate!
+        const maxSimilarity = Math.max(titleSimilarity, descSimilarity);
+        
+        let skipReason = `Task already exists in ${targetProject.projectId}: `;
+        if (existingTask.status === 'COMPLETED') {
+          skipReason += `completed as ${existingTask.id}`;
+        } else if (existingTask.status === 'IN_PROGRESS') {
+          skipReason += `in progress as ${existingTask.id}${existingTask.claimedBy ? ` (claimed by ${existingTask.claimedBy})` : ''}`;
+        } else {
+          skipReason += `pending as ${existingTask.id}`;
+        }
+        skipReason += ` (similarity: ${(maxSimilarity * 100).toFixed(0)}%)`;
+        
+        return {
+          ...delegation,
+          isDuplicate: true,
+          existingTaskId: existingTask.id,
+          existingTaskStatus: existingTask.status,
+          skipReason,
+          similarity: maxSimilarity,
+        };
+      }
+    }
+    
+    // No duplicates found
+    return delegation;
+    
+  } catch (error: any) {
+    console.error(`  Warning: Failed to check duplicates for ${delegation.targetProject}: ${error.message}`);
+    // In case of error, proceed without deduplication metadata
+    return delegation;
+  }
+}
+
+/**
+ * Filters delegations by checking against existing tasks in target projects
+ * @param delegations Array of proposed delegations
+ * @param registryManager Registry manager for resolving projects
+ * @returns Object with filtered delegations and skipped ones with reasons
+ */
+async function filterDuplicateDelegations(
+  delegations: TaskDelegation[],
+  registryManager: RegistryManager
+): Promise<{
+  validDelegations: TaskDelegation[];
+  duplicateDelegations: TaskDelegation[];
+}> {
+  if (!delegations || delegations.length === 0) {
+    return { validDelegations: [], duplicateDelegations: [] };
+  }
+  
+  console.error(`\n=== Checking for duplicate delegations ===`);
+  
+  const validDelegations: TaskDelegation[] = [];
+  const duplicateDelegations: TaskDelegation[] = [];
+  
+  for (const delegation of delegations) {
+    // Resolve target project
+    const targetProject = await registryManager.getProject(delegation.targetProject);
+    
+    if (!targetProject) {
+      console.error(`  Warning: Target project '${delegation.targetProject}' not found. Keeping delegation.`);
+      validDelegations.push(delegation);
+      continue;
+    }
+    
+    // Check for duplicates
+    const checkedDelegation = await checkDelegationDuplicate(delegation, targetProject, registryManager);
+    
+    if (checkedDelegation.isDuplicate) {
+      console.error(`  ✗ DUPLICATE: ${delegation.taskTitle} → ${delegation.targetProject}`);
+      console.error(`    ${checkedDelegation.skipReason}`);
+      duplicateDelegations.push(checkedDelegation);
+    } else {
+      console.error(`  ✓ VALID: ${delegation.taskTitle} → ${delegation.targetProject}`);
+      validDelegations.push(checkedDelegation);
+    }
+  }
+  
+  console.error(`\nDeduplication results: ${validDelegations.length} valid, ${duplicateDelegations.length} duplicates`);
+  
+  return { validDelegations, duplicateDelegations };
+}
 
 /**
  * Routes a task to the appropriate project(s) based on responsibilities
@@ -468,13 +600,46 @@ export async function routeTaskTool(
       }
     }
     
+    // ========================================================================
+    // DEDUPLICATION: Check against existing tasks in target project boards
+    // ========================================================================
+    
+    let finalDelegations = result.delegations || [];
+    let duplicateDelegations: TaskDelegation[] = [];
+    
+    if (finalDelegations.length > 0) {
+      const { validDelegations, duplicateDelegations: duplicates } = 
+        await filterDuplicateDelegations(finalDelegations, registryManager);
+      
+      finalDelegations = validDelegations;
+      duplicateDelegations = duplicates;
+      
+      // Update action if all delegations were duplicates
+      if (validDelegations.length === 0 && result.delegations.length > 0) {
+        if (result.myResponsibilities && result.myResponsibilities.length > 0) {
+          result.action = 'proceed'; // Had delegations but all were duplicates, only local work remains
+        } else {
+          result.action = 'proceed'; // Everything was a duplicate, nothing to do
+        }
+      }
+    }
+    
+    // Build architecture notes with deduplication info
+    let architectureNotes = result.architectureNotes || '';
+    if (duplicateDelegations.length > 0) {
+      architectureNotes += `\n\n**Delegaciones filtradas (duplicadas):**\n`;
+      for (const dup of duplicateDelegations) {
+        architectureNotes += `- ${dup.taskTitle} → ${dup.targetProject}: ${dup.skipReason}\n`;
+      }
+    }
+    
     const routeResult: RouteTaskResult = {
       success: true,
       action: result.action || 'proceed',
       myResponsibilities: result.myResponsibilities || [],
-      delegations: result.delegations || [],
+      delegations: finalDelegations, // Only non-duplicate delegations
       suggestedImports: result.suggestedImports || [],
-      architectureNotes: result.architectureNotes || '',
+      architectureNotes,
       warning: result.warning,
     };
     

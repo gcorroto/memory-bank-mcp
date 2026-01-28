@@ -1,5 +1,6 @@
 import { RegistryManager } from '../common/registryManager.js';
 import { AgentBoard } from '../common/agentBoard.js';
+import { textSimilarity } from '../common/textSimilarity.js';
 
 export interface DelegateTaskParams {
     projectId: string; // Source project
@@ -22,9 +23,34 @@ export async function delegateTaskTool(params: DelegateTaskParams) {
 
     try {
         // Initialize board for the TARGET project path
-        // We use targetProject.path as the workspace root for that board
         const targetBoard = new AgentBoard(targetProject.path, targetProject.projectId);
         
+        // ========================================================================
+        // DOUBLE CHECK: Verify no duplicate task exists before creating
+        // (Protection against race conditions between route and delegate)
+        // ========================================================================
+        
+        const existingTasks = targetBoard.getAllTasks();
+        const TITLE_SIMILARITY_THRESHOLD = 0.85;
+        
+        for (const existingTask of existingTasks) {
+            const similarity = textSimilarity(params.title, existingTask.title);
+            
+            if (similarity >= TITLE_SIMILARITY_THRESHOLD) {
+                // Found a duplicate - don't create
+                console.error(`  ⚠️  Duplicate task detected during delegation: ${existingTask.id} (similarity: ${(similarity * 100).toFixed(0)}%)`);
+                
+                return {
+                    success: true, // Not an error, just already exists
+                    taskId: existingTask.id,
+                    isDuplicate: true,
+                    existingStatus: existingTask.status,
+                    message: `Task already exists in '${params.targetProjectId}' as ${existingTask.id} (status: ${existingTask.status}). No duplicate created.`
+                };
+            }
+        }
+        
+        // No duplicate found - safe to create
         const taskId = await targetBoard.createExternalTask(
             params.title,
             params.projectId,
@@ -34,6 +60,7 @@ export async function delegateTaskTool(params: DelegateTaskParams) {
         return {
             success: true,
             taskId,
+            isDuplicate: false,
             message: `Task successfully delegated to project '${params.targetProjectId}' (Task ID: ${taskId})`
         };
     } catch (error: any) {
