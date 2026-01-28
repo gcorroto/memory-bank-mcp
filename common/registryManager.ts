@@ -219,8 +219,6 @@ export class RegistryManager {
             }
         }
     }
-        }
-    }
 
     private async updateProjectEmbedding(card: ProjectCard, embeddingService: EmbeddingService): Promise<void> {
         // Build rich text for embedding including responsibilities

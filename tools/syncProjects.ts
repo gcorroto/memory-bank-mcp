@@ -18,7 +18,7 @@ export async function syncProjectsTool() {
         const registryManager = new RegistryManager();
         const embeddingService = new EmbeddingService(process.env.OPENAI_API_KEY);
         const vectorStore = new VectorStore();
-        const projectKnowledgeService = new ProjectKnowledgeService();
+        const projectKnowledgeService = new ProjectKnowledgeService(process.env.OPENAI_API_KEY);
         
         console.error("\n=== Starting Project Synchronization ===");
         
@@ -67,10 +67,10 @@ export async function syncProjectsTool() {
                 console.error(`\nProcessing project: ${projectId}`);
                 
                 // Check if project has documentation
+                const hasDocumentation = projectKnowledgeService.isProjectInitialized(projectId);
                 const hasIndexedCode = indexedProjectIds.includes(projectId);
                 
-                if (!hasDocumentation && hasIndexedCode
-                if (!hasDocumentation) {
+                if (!hasDocumentation && hasIndexedCode) {
                     console.error(`  - No documentation found, generating...`);
                     
                     // Generate documentation (this will automatically update registry)
@@ -124,7 +124,9 @@ export async function syncProjectsTool() {
                         }
                     } else {
                         console.error(`  - No chunks found for project, skipping`);
-                       if (hasDocumentation) {
+                        docsSkipped++;
+                    }
+                } else if (hasDocumentation) {
                     console.error(`  - Documentation already exists, ensuring registry is up-to-date...`);
                     
                     // Documentation exists, regenerate/update registry from it (RECOVERY!)
@@ -155,9 +157,17 @@ export async function syncProjectsTool() {
                     }
                     docsSkipped++;
                 } else {
-                    console.error(`  - No documentation and no indexed code, skipping`);   );
-                        console.error(`  - Registry updated`);
-                    }Projects discovered: ${allProjectIds.length} total`);
+                    console.error(`  - No documentation and no indexed code, skipping`);
+                    docsSkipped++;
+                }
+            } catch (error) {
+                console.error(`  - Error processing project ${projectId}: ${error}`);
+                docsFailed++;
+            }
+        }
+        
+        console.error("\n=== Synchronization Complete ===");
+        console.error(`Projects discovered: ${allProjectIds.length} total`);
         console.error(`  - From indexed code: ${indexedProjectIds.length}`);
         console.error(`  - From documentation folders: ${documentedProjectIds.length}`);
         console.error(`Registry synced: ${registryResult.processed} projects`);
@@ -185,7 +195,19 @@ export async function syncProjectsTool() {
                     skipped: docsSkipped,
                     failed: docsFailed
                 }
-            success: true,y recupera automáticamente todos los proyectos desde múltiples fuentes.
+            }
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: `Error during synchronization: ${error}`
+        };
+    }
+}
+
+export const syncProjectsToolDefinition = {
+    name: "memorybank_sync_projects",
+    description: `Sincroniza y recupera automáticamente todos los proyectos desde múltiples fuentes.
     
 Esta herramienta realiza una sincronización completa con AUTO-RECUPERACIÓN:
 
@@ -204,29 +226,7 @@ RECUPERACIÓN AUTOMÁTICA:
 - Has indexado código pero no has generado documentación
 - El registry está desactualizado o incompleto
 - Necesitas poblar las responsabilidades de proyectos para el orquestador
-- Has perdido proyectos del registry pero las carpetas siguen existiendo
-        return {
-            success: false,
-            message: `Error during synchronization: ${error}`
-        };
-    }
-}
-
-export const syncProjectsToolDefinition = {
-    name: "memorybank_sync_projects",
-    description: `Sincroniza todos los proyectos del registro JSON al store vectorial y viceversa. 
-    
-Esta herramienta realiza una sincronización completa bidireccional:
-1. Sincroniza proyectos del registry JSON al vector store de proyectos
-2. Encuentra todos los proyectos que tienen código indexado en el vector store
-3. Genera documentación para proyectos sin documentación
-4. Actualiza el registry con las responsabilidades extraídas de la documentación
-
-Útil cuando:
-- Has indexado código pero no has generado documentación
-- El registry está desactualizado o incompleto
-- Necesitas poblar las responsabilidades de proyectos para el orquestador
-- Has eliminado proyectos del registry pero siguen en el vector store`,
+- Has perdido proyectos del registry pero las carpetas siguen existiendo`,
     inputSchema: {
         type: "object",
         properties: {}
